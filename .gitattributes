@@ -1,0 +1,8 @@
+*.pdf binary
+*.xlsx binary
+*.xls binary
+*.json text
+*.md text
+*.py text
+*.toml text
+*.sh text eol=lf
