@@ -434,6 +434,113 @@
         <div class="card-content">
           <p class="api-note">POST /api/simulation/start</p>
           <p class="description">시뮬레이션 환경이 준비 완료되어 시뮬레이션을 시작할 수 있습니다</p>
+
+          <div v-if="simulationConfig" class="insurance-preflight">
+            <div class="preflight-header">
+              <div class="preflight-title-group">
+                <span class="preflight-eyebrow">INSURANCE SALES SIMULATION</span>
+                <h3 class="preflight-title">신상품 판매 시뮬레이션 작업대</h3>
+                <p class="preflight-summary">{{ preflightSummary }}</p>
+              </div>
+              <div class="preflight-status">
+                <span class="status-pulse"></span>
+                <span>WORLD READY</span>
+              </div>
+            </div>
+
+            <div class="preflight-metrics">
+              <div class="metric-strip-item">
+                <span class="metric-strip-label">상품</span>
+                <span class="metric-strip-value">{{ productDisplayName }}</span>
+              </div>
+              <div class="metric-strip-item">
+                <span class="metric-strip-label">Agent</span>
+                <span class="metric-strip-value mono">{{ agentSegmentCount }}</span>
+              </div>
+              <div class="metric-strip-item">
+                <span class="metric-strip-label">채널</span>
+                <span class="metric-strip-value mono">{{ salesChannels.length }}</span>
+              </div>
+              <div class="metric-strip-item">
+                <span class="metric-strip-label">KPI</span>
+                <span class="metric-strip-value mono">{{ preflightKpis.length }}</span>
+              </div>
+            </div>
+
+            <div class="preflight-layout">
+              <section class="preflight-section product-section">
+                <div class="section-heading-row">
+                  <span class="preflight-section-title">상품 메시지 축</span>
+                  <span class="section-chip">DRAFT</span>
+                </div>
+                <div class="message-axis-list">
+                  <div v-for="axis in messageAxes" :key="axis.label" class="message-axis">
+                    <span class="axis-label">{{ axis.label }}</span>
+                    <span class="axis-value">{{ axis.value }}</span>
+                  </div>
+                </div>
+              </section>
+
+              <section class="preflight-section funnel-section">
+                <div class="section-heading-row">
+                  <span class="preflight-section-title">판매 Funnel</span>
+                  <span class="section-chip">PRE-RUN</span>
+                </div>
+                <div class="funnel-track">
+                  <div v-for="stage in salesFunnelStages" :key="stage.name" class="funnel-stage">
+                    <span class="stage-index">{{ stage.index }}</span>
+                    <span class="stage-name">{{ stage.name }}</span>
+                    <span class="stage-signal">{{ stage.signal }}</span>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <section class="preflight-section">
+              <div class="section-heading-row">
+                <span class="preflight-section-title">채널 레이어</span>
+                <span class="section-chip">4 LANES</span>
+              </div>
+              <div class="channel-lanes">
+                <div v-for="channel in salesChannels" :key="channel.name" class="channel-lane">
+                  <div class="channel-lane-head">
+                    <span class="channel-name">{{ channel.name }}</span>
+                    <span class="channel-type">{{ channel.type }}</span>
+                  </div>
+                  <p class="channel-role">{{ channel.role }}</p>
+                  <span class="channel-signal">{{ channel.signal }}</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="preflight-section">
+              <div class="section-heading-row">
+                <span class="preflight-section-title">관측 KPI</span>
+                <span class="section-chip">BASELINE</span>
+              </div>
+              <div class="kpi-grid">
+                <div v-for="kpi in preflightKpis" :key="kpi.label" class="kpi-item">
+                  <span class="kpi-label">{{ kpi.label }}</span>
+                  <span class="kpi-value">{{ kpi.value }}</span>
+                  <span class="kpi-desc">{{ kpi.desc }}</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="preflight-section">
+              <div class="section-heading-row">
+                <span class="preflight-section-title">개입 시나리오 슬롯</span>
+                <span class="section-chip">QUEUE</span>
+              </div>
+              <div class="intervention-row">
+                <div v-for="item in interventionSlots" :key="item.time" class="intervention-item">
+                  <span class="intervention-time">{{ item.time }}</span>
+                  <span class="intervention-name">{{ item.name }}</span>
+                  <span class="intervention-target">{{ item.target }}</span>
+                </div>
+              </div>
+            </section>
+          </div>
           
           <!-- 시뮬레이션 라운드 수 설정 - 설정 생성이 완료되고 라운드 수가 계산된 후에만 표시 -->
           <div v-if="simulationConfig && autoGeneratedRounds" class="rounds-config-section">
@@ -672,6 +779,64 @@ let lastLoggedConfigStage = ''
 const useCustomRounds = ref(false) // 기본값은 자동 설정 라운드 수 사용
 const customMaxRounds = ref(40)   // 기본 추천 40라운드
 
+const salesFunnelStages = [
+  { index: '01', name: '인지', signal: '노출/화제화' },
+  { index: '02', name: '관심', signal: '보장/보험료 질문' },
+  { index: '03', name: '비교', signal: '약관/경쟁상품 검증' },
+  { index: '04', name: '상담', signal: '설계사/앱 견적' },
+  { index: '05', name: '가입의향', signal: '신뢰/가격 저항' }
+]
+
+const salesChannels = [
+  {
+    name: '공식/디지털',
+    type: 'OWNED',
+    role: '상품 메시지, 약관 요약, 앱 가입/청구 UX',
+    signal: '이해도와 신뢰의 기준선'
+  },
+  {
+    name: '설계사/GA',
+    type: 'SALES',
+    role: '상담 스크립트, 반론 처리, 가족 보장 설계',
+    signal: '상담 전환과 과장 리스크'
+  },
+  {
+    name: '커뮤니티',
+    type: 'SOCIAL',
+    role: '맘카페, 직장인, 재테크, 보험 커뮤니티 검증',
+    signal: '가격 저항과 후기 확산'
+  },
+  {
+    name: '미디어/인플루언서',
+    type: 'EARNED',
+    role: '출시 프레임, 비교 콘텐츠, 전문가 해설',
+    signal: '초기 프레임과 재평가 트리거'
+  }
+]
+
+const preflightKpis = [
+  { label: '인지율', value: '--', desc: '초기 노출 범위' },
+  { label: '신뢰 점수', value: '--', desc: '약관/청구/브랜드 반응' },
+  { label: '상담 요청', value: '--', desc: '설계사/앱 전환' },
+  { label: '가입 의향', value: '--', desc: '가격 저항 반영' },
+  { label: '부정 이슈', value: '--', desc: '개인정보/특약 논쟁' },
+  { label: '메시지 수정', value: '--', desc: 'FAQ/카드뉴스 필요도' }
+]
+
+const interventionSlots = [
+  { time: 'D+0', name: '런칭 메시지', target: '공식/디지털' },
+  { time: 'D+3', name: 'FAQ 공개', target: '커뮤니티' },
+  { time: 'D+7', name: '비교표 배포', target: '설계사/GA' },
+  { time: 'D+14', name: '청구 UX 사례', target: '미디어/인플루언서' }
+]
+
+const messageAxes = [
+  { label: '핵심 보장', value: '암/뇌혈관/심장질환 등 주요 리스크 중심' },
+  { label: '가격 저항', value: '생활비 부담과 보장 체감의 균형' },
+  { label: '신뢰 장치', value: '약관 요약, 면책/감액, 청구 절차 투명화' },
+  { label: '데이터 우려', value: '건강관리 연동과 개인정보 처리 조건' }
+]
+
 // Watch stage to update phase
 watch(currentStage, (newStage) => {
   if (newStage === 'Agent 페르소나 생성' || newStage === 'generating_profiles') {
@@ -701,6 +866,23 @@ const autoGeneratedRounds = computed(() => {
   const calculatedRounds = Math.floor((totalHours * 60) / minutesPerRound)
   // 최대 라운드 수가 40(권장값)보다 작지 않도록 하여 슬라이더 범위 이상을 방지
   return Math.max(calculatedRounds, 40)
+})
+
+const agentSegmentCount = computed(() => {
+  return simulationConfig.value?.agent_configs?.length || profiles.value.length || 0
+})
+
+const productDisplayName = computed(() => {
+  const source = props.projectData?.simulation_requirement || simulationConfig.value?.simulation_requirement || ''
+  const quoted = source.match(/['"‘“]([^'"’”]+)['"’”]/)
+  if (quoted?.[1]) return quoted[1]
+  return '삼성생명 보험 신상품'
+})
+
+const preflightSummary = computed(() => {
+  const source = props.projectData?.simulation_requirement || simulationConfig.value?.simulation_requirement || ''
+  if (!source) return '가상 세계와 Agent 구성이 생성되었습니다. 판매 채널, Funnel, KPI 기준선을 실행 전에 확인합니다.'
+  return source.length > 150 ? `${source.slice(0, 150)}...` : source
 })
 
 // Polling timer
@@ -2270,6 +2452,352 @@ onUnmounted(() => {
   color: #555;
   line-height: 1.5;
   margin: 0;
+}
+
+/* 보험 판매 시뮬레이션 Preflight */
+.insurance-preflight {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #EAEAEA;
+}
+
+.preflight-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.preflight-title-group {
+  min-width: 0;
+  flex: 1;
+}
+
+.preflight-eyebrow {
+  display: block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: #0F766E;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+
+.preflight-title {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  line-height: 1.35;
+  color: #111827;
+}
+
+.preflight-summary {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #64748B;
+  word-break: keep-all;
+}
+
+.preflight-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: #166534;
+  background: #ECFDF5;
+  border: 1px solid #BBF7D0;
+  border-radius: 999px;
+  padding: 5px 9px;
+}
+
+.status-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22C55E;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.14);
+}
+
+.preflight-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.metric-strip-item {
+  min-width: 0;
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.metric-strip-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: #94A3B8;
+  margin-bottom: 4px;
+}
+
+.metric-strip-value {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1E293B;
+  overflow-wrap: anywhere;
+}
+
+.metric-strip-value.mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.preflight-layout {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.preflight-section {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid #EAEAEA;
+}
+
+.preflight-layout .preflight-section {
+  margin-top: 0;
+}
+
+.section-heading-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.preflight-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
+  letter-spacing: 0.02em;
+}
+
+.section-chip {
+  flex-shrink: 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  color: #475569;
+  background: #F1F5F9;
+  border-radius: 999px;
+  padding: 3px 7px;
+}
+
+.message-axis-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.message-axis {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 9px 0;
+  border-bottom: 1px dashed #E2E8F0;
+}
+
+.message-axis:last-child {
+  border-bottom: none;
+}
+
+.axis-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+}
+
+.axis-value {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #475569;
+  overflow-wrap: anywhere;
+}
+
+.funnel-track {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: 8px;
+}
+
+.funnel-stage {
+  min-width: 0;
+  background: #FAFAFA;
+  border: 1px solid #E5E7EB;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.stage-index {
+  display: block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: #0F766E;
+  margin-bottom: 6px;
+}
+
+.stage-name {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 4px;
+}
+
+.stage-signal {
+  display: block;
+  font-size: 10px;
+  line-height: 1.4;
+  color: #64748B;
+}
+
+.channel-lanes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.channel-lane {
+  min-width: 0;
+  background: #FFFFFF;
+  border: 1px solid #E5E7EB;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.channel-lane-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.channel-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1E293B;
+}
+
+.channel-type {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  color: #1D4ED8;
+  background: #EFF6FF;
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+.channel-role {
+  min-height: 38px;
+  margin: 0 0 8px 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #475569;
+}
+
+.channel-signal {
+  display: block;
+  font-size: 10px;
+  color: #7C2D12;
+  background: #FFF7ED;
+  border-radius: 4px;
+  padding: 5px 7px;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+}
+
+.kpi-item {
+  min-width: 0;
+  border: 1px solid #E5E7EB;
+  border-radius: 6px;
+  padding: 10px;
+  background: #F8FAFC;
+}
+
+.kpi-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  margin-bottom: 6px;
+}
+
+.kpi-value {
+  display: block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 18px;
+  font-weight: 800;
+  color: #111827;
+  margin-bottom: 4px;
+}
+
+.kpi-desc {
+  display: block;
+  font-size: 10px;
+  line-height: 1.4;
+  color: #64748B;
+}
+
+.intervention-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 8px;
+}
+
+.intervention-item {
+  min-width: 0;
+  border: 1px solid #E5E7EB;
+  border-radius: 6px;
+  padding: 10px;
+  background: #FFFFFF;
+}
+
+.intervention-time {
+  display: block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 800;
+  color: #BE123C;
+  margin-bottom: 5px;
+}
+
+.intervention-name {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1E293B;
+  margin-bottom: 5px;
+}
+
+.intervention-target {
+  display: block;
+  font-size: 10px;
+  line-height: 1.4;
+  color: #64748B;
 }
 
 /* 시뮬레이션 라운드 수 설정 스타일 */

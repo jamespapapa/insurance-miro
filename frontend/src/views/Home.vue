@@ -3,11 +3,6 @@
     <!-- 상단 내비게이션 바 -->
     <nav class="navbar">
       <div class="nav-brand">MIROFISH</div>
-      <div class="nav-links">
-        <a href="https://github.com/666ghj/MiroFish" target="_blank" class="github-link">
-          우리의 Github 홈을 방문하세요 <span class="arrow">↗</span>
-        </a>
-      </div>
     </nav>
 
     <div class="main-content">
