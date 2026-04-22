@@ -1,16 +1,16 @@
 """
-OASIS Reddit模拟预设脚本
-此脚本读取配置文件中的参数来执行模拟，实现全程自动化
+OASIS Reddit 시뮬레이션 프리셋 스크립트
+이 스크립트는 설정 파일의 매개변수를 읽어 시뮬레이션을 실행하며, 전 과정을 자동화합니다
 
-功能特性:
-- 完成模拟后不立即关闭环境，进入等待命令模式
-- 支持通过IPC接收Interview命令
-- 支持单个Agent采访和批量采访
-- 支持远程关闭环境命令
+기능 특성:
+- 시뮬레이션 완료 후 즉시 환경을 종료하지 않고, 명령 대기 모드로 진입
+- IPC를 통해 Interview 명령 수신 지원
+- 단일 Agent 인터뷰 및 일괄 인터뷰 지원
+- 원격 환경 종료 명령 지원
 
-使用方式:
+사용 방식:
     python run_reddit_simulation.py --config /path/to/simulation_config.json
-    python run_reddit_simulation.py --config /path/to/simulation_config.json --no-wait  # 完成后立即关闭
+    python run_reddit_simulation.py --config /path/to/simulation_config.json --no-wait  # 완료 후 즉시 종료
 """
 
 import argparse
@@ -25,18 +25,18 @@ import sqlite3
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
-# 全局变量：用于信号处理
+# 전역 변수：신호 처리용
 _shutdown_event = None
 _cleanup_done = False
 
-# 添加项目路径
+# 프로젝트 경로 추가
 _scripts_dir = os.path.dirname(os.path.abspath(__file__))
 _backend_dir = os.path.abspath(os.path.join(_scripts_dir, '..'))
 _project_root = os.path.abspath(os.path.join(_backend_dir, '..'))
 sys.path.insert(0, _scripts_dir)
 sys.path.insert(0, _backend_dir)
 
-# 加载项目根目录的 .env 文件（包含 LLM_API_KEY 等配置）
+# 프로젝트 루트 디렉터리의 .env 파일 로드（LLM_API_KEY 등 구성 포함）
 from dotenv import load_dotenv
 _env_file = os.path.join(_project_root, '.env')
 if os.path.exists(_env_file):
@@ -46,13 +46,14 @@ else:
     if os.path.exists(_backend_env):
         load_dotenv(_backend_env)
 
+from llm_runtime import resolve_llm_runtime
 
 import re
 
 
 class UnicodeFormatter(logging.Formatter):
-    """自定义格式化器，将 Unicode 转义序列转换为可读字符"""
-    
+    """사용자 정의 포매터, Unicode 이스케이프 시퀀스를 읽을 수 있는 문자로 변환"""
+
     UNICODE_ESCAPE_PATTERN = re.compile(r'\\u([0-9a-fA-F]{4})')
     
     def format(self, record):
@@ -68,24 +69,24 @@ class UnicodeFormatter(logging.Formatter):
 
 
 class MaxTokensWarningFilter(logging.Filter):
-    """过滤掉 camel-ai 关于 max_tokens 的警告（我们故意不设置 max_tokens，让模型自行决定）"""
+    """camel-ai의 max_tokens 관련 경고를 필터링합니다(의도적으로 max_tokens를 설정하지 않아 모델이 스스로 결정하도록 합니다)"""
     
     def filter(self, record):
-        # 过滤掉包含 max_tokens 警告的日志
+        # max_tokens 경고를 포함한 로그를 필터링
         if "max_tokens" in record.getMessage() and "Invalid or missing" in record.getMessage():
             return False
         return True
 
 
-# 在模块加载时立即添加过滤器，确保在 camel 代码执行前生效
+# 모듈 로드 시 즉시 필터를 추가하여 camel 코드 실행 전에 적용되도록 보장
 logging.getLogger().addFilter(MaxTokensWarningFilter())
 
 
 def setup_oasis_logging(log_dir: str):
-    """配置 OASIS 的日志，使用固定名称的日志文件"""
+    """OASIS 로그를 설정하고 고정된 이름의 로그 파일을 사용합니다"""
     os.makedirs(log_dir, exist_ok=True)
     
-    # 清理旧的日志文件
+    # 이전 로그 파일 정리
     for f in os.listdir(log_dir):
         old_log = os.path.join(log_dir, f)
         if os.path.isfile(old_log) and f.endswith('.log'):
@@ -126,26 +127,26 @@ try:
         generate_reddit_agent_graph
     )
 except ImportError as e:
-    print(f"错误: 缺少依赖 {e}")
-    print("请先安装: pip install oasis-ai camel-ai")
+    print(f"오류: 누락된 의존성 {e}")
+    print("먼저 설치하세요: pip install oasis-ai camel-ai")
     sys.exit(1)
 
 
-# IPC相关常量
+# IPC 관련 상수
 IPC_COMMANDS_DIR = "ipc_commands"
 IPC_RESPONSES_DIR = "ipc_responses"
 ENV_STATUS_FILE = "env_status.json"
 
 class CommandType:
-    """命令类型常量"""
+    """명령 유형 상수"""
     INTERVIEW = "interview"
     BATCH_INTERVIEW = "batch_interview"
     CLOSE_ENV = "close_env"
 
 
 class IPCHandler:
-    """IPC命令处理器"""
-    
+    """IPC 명령 처리기"""
+
     def __init__(self, simulation_dir: str, env, agent_graph):
         self.simulation_dir = simulation_dir
         self.env = env
@@ -155,12 +156,12 @@ class IPCHandler:
         self.status_file = os.path.join(simulation_dir, ENV_STATUS_FILE)
         self._running = True
         
-        # 确保目录存在
+        # 디렉터리가 존재하는지 확인
         os.makedirs(self.commands_dir, exist_ok=True)
         os.makedirs(self.responses_dir, exist_ok=True)
     
     def update_status(self, status: str):
-        """更新环境状态"""
+        """환경 상태 업데이트"""
         with open(self.status_file, 'w', encoding='utf-8') as f:
             json.dump({
                 "status": status,
@@ -168,11 +169,11 @@ class IPCHandler:
             }, f, ensure_ascii=False, indent=2)
     
     def poll_command(self) -> Optional[Dict[str, Any]]:
-        """轮询获取待处理命令"""
+        """대기 중인 명령을 폴링하여 가져옵니다"""
         if not os.path.exists(self.commands_dir):
             return None
         
-        # 获取命令文件（按时间排序）
+        # 명령 파일 가져오기（시간순 정렬）
         command_files = []
         for filename in os.listdir(self.commands_dir):
             if filename.endswith('.json'):
@@ -191,7 +192,7 @@ class IPCHandler:
         return None
     
     def send_response(self, command_id: str, status: str, result: Dict = None, error: str = None):
-        """发送响应"""
+        """응답 전송"""
         response = {
             "command_id": command_id,
             "status": status,
@@ -204,7 +205,7 @@ class IPCHandler:
         with open(response_file, 'w', encoding='utf-8') as f:
             json.dump(response, f, ensure_ascii=False, indent=2)
         
-        # 删除命令文件
+        # 명령 파일 삭제
         command_file = os.path.join(self.commands_dir, f"{command_id}.json")
         try:
             os.remove(command_file)
@@ -213,50 +214,50 @@ class IPCHandler:
     
     async def handle_interview(self, command_id: str, agent_id: int, prompt: str) -> bool:
         """
-        处理单个Agent采访命令
+        단일 Agent 인터뷰 명령 처리
         
         Returns:
-            True 表示成功，False 表示失败
+            True는 성공을 의미하고, False는 실패를 의미함
         """
         try:
-            # 获取Agent
+            # Agent 가져오기
             agent = self.agent_graph.get_agent(agent_id)
             
-            # 创建Interview动作
+            # Interview 동작 생성
             interview_action = ManualAction(
                 action_type=ActionType.INTERVIEW,
                 action_args={"prompt": prompt}
             )
             
-            # 执行Interview
+            # Interview 실행
             actions = {agent: interview_action}
             await self.env.step(actions)
             
-            # 从数据库获取结果
+            # 데이터베이스에서 결과 가져오기
             result = self._get_interview_result(agent_id)
             
             self.send_response(command_id, "completed", result=result)
-            print(f"  Interview完成: agent_id={agent_id}")
+            print(f"  Interview완료: agent_id={agent_id}")
             return True
             
         except Exception as e:
             error_msg = str(e)
-            print(f"  Interview失败: agent_id={agent_id}, error={error_msg}")
+            print(f"  Interview실패: agent_id={agent_id}, error={error_msg}")
             self.send_response(command_id, "failed", error=error_msg)
             return False
     
     async def handle_batch_interview(self, command_id: str, interviews: List[Dict]) -> bool:
         """
-        处理批量采访命令
-        
+        배치 인터뷰 명령 처리
+
         Args:
             interviews: [{"agent_id": int, "prompt": str}, ...]
         """
         try:
-            # 构建动作字典
+            # 동작 딕셔너리 구성
             actions = {}
-            agent_prompts = {}  # 记录每个agent的prompt
-            
+            agent_prompts = {}  # 각 agent의 prompt 기록
+
             for interview in interviews:
                 agent_id = interview.get("agent_id")
                 prompt = interview.get("prompt", "")
@@ -269,16 +270,16 @@ class IPCHandler:
                     )
                     agent_prompts[agent_id] = prompt
                 except Exception as e:
-                    print(f"  警告: 无法获取Agent {agent_id}: {e}")
+                    print(f"  경고: Agent {agent_id}를 가져올 수 없습니다: {e}")
             
             if not actions:
-                self.send_response(command_id, "failed", error="没有有效的Agent")
+                self.send_response(command_id, "failed", error="유효한 Agent가 없습니다")
                 return False
             
-            # 执行批量Interview
+            # 배치 Interview 실행
             await self.env.step(actions)
             
-            # 获取所有结果
+            # 모든 결과 가져오기
             results = {}
             for agent_id in agent_prompts.keys():
                 result = self._get_interview_result(agent_id)
@@ -288,17 +289,17 @@ class IPCHandler:
                 "interviews_count": len(results),
                 "results": results
             })
-            print(f"  批量Interview完成: {len(results)} 个Agent")
+            print(f"  배치 Interview 완료: {len(results)} 개 Agent")
             return True
             
         except Exception as e:
             error_msg = str(e)
-            print(f"  批量Interview失败: {error_msg}")
+            print(f"  배치 Interview 실패: {error_msg}")
             self.send_response(command_id, "failed", error=error_msg)
             return False
     
     def _get_interview_result(self, agent_id: int) -> Dict[str, Any]:
-        """从数据库获取最新的Interview结果"""
+        """DB에서 최신 Interview 결과 가져오기"""
         db_path = os.path.join(self.simulation_dir, "reddit_simulation.db")
         
         result = {
@@ -314,7 +315,7 @@ class IPCHandler:
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
             
-            # 查询最新的Interview记录
+            # 최신 Interview 기록 조회
             cursor.execute("""
                 SELECT user_id, info, created_at
                 FROM trace
@@ -336,16 +337,16 @@ class IPCHandler:
             conn.close()
             
         except Exception as e:
-            print(f"  读取Interview结果失败: {e}")
-        
+            print(f"  Interview 결과 읽기 실패: {e}")
+
         return result
     
     async def process_commands(self) -> bool:
         """
-        处理所有待处理命令
+        처리해야 할 모든 명령을 처리합니다
         
         Returns:
-            True 表示继续运行，False 表示应该退出
+            True 는 계속 실행을 의미하고, False 는 종료해야 함을 의미합니다
         """
         command = self.poll_command()
         if not command:
@@ -355,8 +356,8 @@ class IPCHandler:
         command_type = command.get("command_type")
         args = command.get("args", {})
         
-        print(f"\n收到IPC命令: {command_type}, id={command_id}")
-        
+        print(f"\nIPC 명령 수신: {command_type}, id={command_id}")
+
         if command_type == CommandType.INTERVIEW:
             await self.handle_interview(
                 command_id,
@@ -373,19 +374,19 @@ class IPCHandler:
             return True
             
         elif command_type == CommandType.CLOSE_ENV:
-            print("收到关闭环境命令")
-            self.send_response(command_id, "completed", result={"message": "环境即将关闭"})
+            print("환경 종료 명령을 받았습니다")
+            self.send_response(command_id, "completed", result={"message": "환경이 곧 종료됩니다"})
             return False
         
         else:
-            self.send_response(command_id, "failed", error=f"未知命令类型: {command_type}")
+            self.send_response(command_id, "failed", error=f"알 수 없는 명령 유형: {command_type}")
             return True
 
 
 class RedditSimulationRunner:
-    """Reddit模拟运行器"""
+    """Reddit 시뮬레이션 실행기"""
     
-    # Reddit可用动作（不包含INTERVIEW，INTERVIEW只能通过ManualAction手动触发）
+    # Reddit 사용 가능 동작(인터뷰 제외, 인터뷰는 ManualAction을 통해서만 수동으로 트리거 가능)
     AVAILABLE_ACTIONS = [
         ActionType.LIKE_POST,
         ActionType.DISLIKE_POST,
@@ -404,11 +405,11 @@ class RedditSimulationRunner:
     
     def __init__(self, config_path: str, wait_for_commands: bool = True):
         """
-        初始化模拟运行器
+        시뮬레이션 실행기를 초기화합니다
         
         Args:
-            config_path: 配置文件路径 (simulation_config.json)
-            wait_for_commands: 模拟完成后是否等待命令（默认True）
+            config_path: 구성 파일 경로 (simulation_config.json)
+            wait_for_commands: 시뮬레이션 완료 후 명령을 기다릴지 여부（기본값True）
         """
         self.config_path = config_path
         self.config = self._load_config()
@@ -419,52 +420,40 @@ class RedditSimulationRunner:
         self.ipc_handler = None
         
     def _load_config(self) -> Dict[str, Any]:
-        """加载配置文件"""
+        """설정 파일 로드"""
         with open(self.config_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     
     def _get_profile_path(self) -> str:
-        """获取Profile文件路径"""
+        """Profile 파일 경로 가져오기"""
         return os.path.join(self.simulation_dir, "reddit_profiles.json")
     
     def _get_db_path(self) -> str:
-        """获取数据库路径"""
+        """데이터베이스 경로 가져오기"""
         return os.path.join(self.simulation_dir, "reddit_simulation.db")
     
     def _create_model(self):
         """
-        创建LLM模型
-        
-        统一使用项目根目录 .env 文件中的配置（优先级最高）：
-        - LLM_API_KEY: API密钥
-        - LLM_BASE_URL: API基础URL
-        - LLM_MODEL_NAME: 模型名称
+        LLM 모델 생성
         """
-        # 优先从 .env 读取配置
-        llm_api_key = os.environ.get("LLM_API_KEY", "")
-        llm_base_url = os.environ.get("LLM_BASE_URL", "")
-        llm_model = os.environ.get("LLM_MODEL_NAME", "")
-        
-        # 如果 .env 中没有，则使用 config 作为备用
-        if not llm_model:
-            llm_model = self.config.get("llm_model", "gpt-4o-mini")
-        
-        # 设置 camel-ai 所需的环境变量
-        if llm_api_key:
-            os.environ["OPENAI_API_KEY"] = llm_api_key
-        
-        if not os.environ.get("OPENAI_API_KEY"):
-            raise ValueError("缺少 API Key 配置，请在项目根目录 .env 文件中设置 LLM_API_KEY")
-        
-        if llm_base_url:
-            os.environ["OPENAI_API_BASE_URL"] = llm_base_url
-        
-        print(f"LLM配置: model={llm_model}, base_url={llm_base_url[:40] if llm_base_url else '默认'}...")
-        
-        return ModelFactory.create(
-            model_platform=ModelPlatformType.OPENAI,
-            model_type=llm_model,
+        runtime = resolve_llm_runtime(self.config)
+        display_url = runtime.base_url[:40] if runtime.base_url else "기본값"
+        print(
+            "LLM 구성: "
+            f"model={runtime.model_name}, base_url={display_url}..., "
+            f"timeout={runtime.timeout:.0f}s, retries={runtime.max_retries}, "
+            f"semaphore={runtime.semaphore}"
         )
+
+        model = ModelFactory.create(
+            model_platform=ModelPlatformType.OPENAI,
+            model_type=runtime.model_name,
+            api_key=runtime.api_key,
+            url=runtime.base_url or None,
+            timeout=runtime.timeout,
+            max_retries=runtime.max_retries,
+        )
+        return model, runtime
     
     def _get_active_agents_for_round(
         self, 
@@ -473,7 +462,7 @@ class RedditSimulationRunner:
         round_num: int
     ) -> List:
         """
-        根据时间和配置决定本轮激活哪些Agent
+        시간과 설정에 따라 이번 라운드에서 어떤 Agent를 활성화할지 결정
         """
         time_config = self.config.get("time_config", {})
         agent_configs = self.config.get("agent_configs", [])
@@ -521,16 +510,16 @@ class RedditSimulationRunner:
         return active_agents
     
     async def run(self, max_rounds: int = None):
-        """运行Reddit模拟
+        """Reddit 시뮬레이션 실행
         
         Args:
-            max_rounds: 最大模拟轮数（可选，用于截断过长的模拟）
+            max_rounds: 최대 시뮬레이션 라운드 수(선택 사항, 너무 긴 시뮬레이션을 잘라내는 용도)
         """
         print("=" * 60)
-        print("OASIS Reddit模拟")
-        print(f"配置文件: {self.config_path}")
-        print(f"模拟ID: {self.config.get('simulation_id', 'unknown')}")
-        print(f"等待命令模式: {'启用' if self.wait_for_commands else '禁用'}")
+        print("OASIS Reddit 시뮬레이션")
+        print(f"구성 파일: {self.config_path}")
+        print(f"시뮬레이션 ID: {self.config.get('simulation_id', 'unknown')}")
+        print(f"명령 대기 모드: {'활성화' if self.wait_for_commands else '비활성화'}")
         print("=" * 60)
         
         time_config = self.config.get("time_config", {})
@@ -538,28 +527,28 @@ class RedditSimulationRunner:
         minutes_per_round = time_config.get("minutes_per_round", 30)
         total_rounds = (total_hours * 60) // minutes_per_round
         
-        # 如果指定了最大轮数，则截断
+        # 최대 라운드 수를 지정했다면 잘라냄
         if max_rounds is not None and max_rounds > 0:
             original_rounds = total_rounds
             total_rounds = min(total_rounds, max_rounds)
             if total_rounds < original_rounds:
-                print(f"\n轮数已截断: {original_rounds} -> {total_rounds} (max_rounds={max_rounds})")
+                print(f"\n라운드 수가 잘렸습니다: {original_rounds} -> {total_rounds} (max_rounds={max_rounds})")
         
-        print(f"\n模拟参数:")
-        print(f"  - 总模拟时长: {total_hours}小时")
-        print(f"  - 每轮时间: {minutes_per_round}分钟")
-        print(f"  - 总轮数: {total_rounds}")
+        print(f"\n시뮬레이션 매개변수:")
+        print(f"  - 총 시뮬레이션 시간: {total_hours}시간")
+        print(f"  - 라운드당 시간: {minutes_per_round}분")
+        print(f"  - 총 라운드 수: {total_rounds}")
         if max_rounds:
-            print(f"  - 最大轮数限制: {max_rounds}")
-        print(f"  - Agent数量: {len(self.config.get('agent_configs', []))}")
+            print(f"  - 최대 라운드 수 제한: {max_rounds}")
+        print(f"  - Agent 수: {len(self.config.get('agent_configs', []))}")
         
-        print("\n初始化LLM模型...")
-        model = self._create_model()
+        print("\nLLM 모델 초기화 중...")
+        model, llm_runtime = self._create_model()
         
-        print("加载Agent Profile...")
+        print("Agent 프로필 로드 중...")
         profile_path = self._get_profile_path()
         if not os.path.exists(profile_path):
-            print(f"错误: Profile文件不存在: {profile_path}")
+            print(f"오류: Profile 파일이 존재하지 않습니다: {profile_path}")
             return
         
         self.agent_graph = await generate_reddit_agent_graph(
@@ -571,29 +560,29 @@ class RedditSimulationRunner:
         db_path = self._get_db_path()
         if os.path.exists(db_path):
             os.remove(db_path)
-            print(f"已删除旧数据库: {db_path}")
+            print(f"이전 데이터베이스를 삭제했습니다: {db_path}")
         
-        print("创建OASIS环境...")
+        print("OASIS 환경을 생성하는 중...")
         self.env = oasis.make(
             agent_graph=self.agent_graph,
             platform=oasis.DefaultPlatformType.REDDIT,
             database_path=db_path,
-            semaphore=30,  # 限制最大并发 LLM 请求数，防止 API 过载
+            semaphore=llm_runtime.semaphore,
         )
         
         await self.env.reset()
-        print("环境初始化完成\n")
+        print("환경 초기화 완료\n")
         
-        # 初始化IPC处理器
+        # IPC 처리기 초기화
         self.ipc_handler = IPCHandler(self.simulation_dir, self.env, self.agent_graph)
         self.ipc_handler.update_status("running")
         
-        # 执行初始事件
+        # 초기 이벤트 실행
         event_config = self.config.get("event_config", {})
         initial_posts = event_config.get("initial_posts", [])
         
         if initial_posts:
-            print(f"执行初始事件 ({len(initial_posts)}条初始帖子)...")
+            print(f"초기 이벤트 실행 ({len(initial_posts)}개의 초기 게시물)...")
             initial_actions = {}
             for post in initial_posts:
                 agent_id = post.get("poster_agent_id", 0)
@@ -613,14 +602,14 @@ class RedditSimulationRunner:
                             action_args={"content": content}
                         )
                 except Exception as e:
-                    print(f"  警告: 无法为Agent {agent_id}创建初始帖子: {e}")
-            
+                    print(f"  경고: Agent {agent_id}의 초기 게시글을 생성할 수 없습니다: {e}")
+
             if initial_actions:
                 await self.env.step(initial_actions)
-                print(f"  已发布 {len(initial_actions)} 条初始帖子")
+                print(f"  초기 게시물 {len(initial_actions)}개를 게시했습니다")
         
-        # 主模拟循环
-        print("\n开始模拟循环...")
+        # 메인 시뮬레이션 루프
+        print("\n시뮬레이션 루프를 시작합니다...")
         start_time = datetime.now()
         
         for round_num in range(total_rounds):
@@ -651,20 +640,20 @@ class RedditSimulationRunner:
                       f"- elapsed: {elapsed:.1f}s")
         
         total_elapsed = (datetime.now() - start_time).total_seconds()
-        print(f"\n模拟循环完成!")
-        print(f"  - 总耗时: {total_elapsed:.1f}秒")
-        print(f"  - 数据库: {db_path}")
+        print(f"\n시뮬레이션 루프가 완료되었습니다!")
+        print(f"  - 총 소요 시간: {total_elapsed:.1f}초")
+        print(f"  - 데이터베이스: {db_path}")
         
-        # 是否进入等待命令模式
+        # 대기 명령 모드로 들어갈지 여부
         if self.wait_for_commands:
             print("\n" + "=" * 60)
-            print("进入等待命令模式 - 环境保持运行")
-            print("支持的命令: interview, batch_interview, close_env")
+            print("대기 명령 모드로 진입 - 환경을 계속 실행 상태로 유지")
+            print("지원되는 명령: interview, batch_interview, close_env")
             print("=" * 60)
             
             self.ipc_handler.update_status("alive")
             
-            # 等待命令循环（使用全局 _shutdown_event）
+            # 명령 대기 루프（전역 _shutdown_event 사용）
             try:
                 while not _shutdown_event.is_set():
                     should_continue = await self.ipc_handler.process_commands()
@@ -672,58 +661,58 @@ class RedditSimulationRunner:
                         break
                     try:
                         await asyncio.wait_for(_shutdown_event.wait(), timeout=0.5)
-                        break  # 收到退出信号
+                        break  # 종료 신호를 받음
                     except asyncio.TimeoutError:
                         pass
             except KeyboardInterrupt:
-                print("\n收到中断信号")
+                print("\n중단 신호를 받았습니다")
             except asyncio.CancelledError:
-                print("\n任务被取消")
+                print("\n작업이 취소되었습니다")
             except Exception as e:
-                print(f"\n命令处理出错: {e}")
+                print(f"\n명령 처리 중 오류 발생: {e}")
             
-            print("\n关闭环境...")
+            print("\n환경을 종료하는 중...")
         
-        # 关闭环境
+        # 환경 종료
         self.ipc_handler.update_status("stopped")
         await self.env.close()
         
-        print("环境已关闭")
+        print("환경이 종료되었습니다")
         print("=" * 60)
 
 
 async def main():
-    parser = argparse.ArgumentParser(description='OASIS Reddit模拟')
+    parser = argparse.ArgumentParser(description='OASIS Reddit시뮬레이션')
     parser.add_argument(
         '--config', 
         type=str, 
         required=True,
-        help='配置文件路径 (simulation_config.json)'
+        help='설정 파일 경로 (simulation_config.json)'
     )
     parser.add_argument(
         '--max-rounds',
         type=int,
         default=None,
-        help='最大模拟轮数（可选，用于截断过长的模拟）'
+        help='최대 시뮬레이션 라운드 수（선택 사항，너무 긴 시뮬레이션을 잘라내기 위해 사용）'
     )
     parser.add_argument(
         '--no-wait',
         action='store_true',
         default=False,
-        help='模拟完成后立即关闭环境，不进入等待命令模式'
+        help='시뮬레이션 완료 후 즉시 환경을 종료하고, 명령 대기 모드로 들어가지 않습니다'
     )
     
     args = parser.parse_args()
     
-    # 在 main 函数开始时创建 shutdown 事件
+    # main 함수 시작 시 shutdown 이벤트 생성
     global _shutdown_event
     _shutdown_event = asyncio.Event()
     
     if not os.path.exists(args.config):
-        print(f"错误: 配置文件不存在: {args.config}")
+        print(f"오류: 설정 파일이 존재하지 않습니다: {args.config}")
         sys.exit(1)
     
-    # 初始化日志配置（使用固定文件名，清理旧日志）
+    # 로그 설정 초기화（고정된 파일명 사용，기존 로그 정리）
     simulation_dir = os.path.dirname(args.config) or "."
     setup_oasis_logging(os.path.join(simulation_dir, "log"))
     
@@ -736,20 +725,20 @@ async def main():
 
 def setup_signal_handlers():
     """
-    设置信号处理器，确保收到 SIGTERM/SIGINT 时能够正确退出
-    让程序有机会正常清理资源（关闭数据库、环境等）
+    시그널 핸들러를 설정하여 SIGTERM/SIGINT를 받았을 때 올바르게 종료할 수 있도록 합니다
+    프로그램이 정상적으로 리소스를 정리할 기회를 제공합니다(데이터베이스, 환경 등을 닫기)
     """
     def signal_handler(signum, frame):
         global _cleanup_done
         sig_name = "SIGTERM" if signum == signal.SIGTERM else "SIGINT"
-        print(f"\n收到 {sig_name} 信号，正在退出...")
+        print(f"\n수신됨 {sig_name} 신호，종료 중...")
         if not _cleanup_done:
             _cleanup_done = True
             if _shutdown_event:
                 _shutdown_event.set()
         else:
-            # 重复收到信号才强制退出
-            print("强制退出...")
+            # 신호를 반복해서 받으면 강제 종료
+            print("강제 종료...")
             sys.exit(1)
     
     signal.signal(signal.SIGTERM, signal_handler)
@@ -761,9 +750,8 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n程序被中断")
+        print("\n프로그램이 중단되었습니다")
     except SystemExit:
         pass
     finally:
-        print("模拟进程已退出")
-
+        print("시뮬레이션 프로세스가 종료되었습니다")
