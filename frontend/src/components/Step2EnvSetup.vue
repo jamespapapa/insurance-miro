@@ -113,12 +113,12 @@
         </div>
       </div>
 
-      <!-- Step 03: 양 플랫폼 시뮬레이션 구성 생성 -->
+      <!-- Step 03: 보험 게임 공간 구성 생성 -->
       <div class="step-card" :class="{ 'active': phase === 2, 'completed': phase > 2 }">
         <div class="card-header">
           <div class="step-info">
             <span class="step-num">03</span>
-            <span class="step-title">양 플랫폼 시뮬레이션 구성 생성</span>
+            <span class="step-title">보험 게임 공간 구성 생성</span>
           </div>
           <div class="step-status">
             <span v-if="phase > 2" class="badge success">완료</span>
@@ -130,7 +130,7 @@
         <div class="card-content">
           <p class="api-note">POST /api/simulation/prepare</p>
           <p class="description">
-            LLM은 시뮬레이션 요구와 현실 시드를 바탕으로 세계 시간 흐름 속도, 추천 알고리즘, 각 개체의 활동 시간대, 발언 빈도, 이벤트 트리거 등 파라미터를 지능적으로 설정합니다
+            LLM은 시뮬레이션 요구와 현실 시드를 바탕으로 Agent 캐릭터, 판매 채널, 행동 시간대, Funnel 전이와 개입 이벤트의 기준 파라미터를 설정합니다
           </p>
           
           <!-- Config Preview -->
@@ -140,18 +140,18 @@
               <div class="config-grid">
                 <div class="config-item">
                   <span class="config-item-label">시뮬레이션 기간</span>
-                  <span class="config-item-value">{{ simulationConfig.time_config?.total_simulation_hours || '-' }} 시간</span>
+                  <span class="config-item-value">{{ simulationTimeLabel }}</span>
                 </div>
                 <div class="config-item">
-                  <span class="config-item-label">라운드당 시간</span>
-                  <span class="config-item-value">{{ simulationConfig.time_config?.minutes_per_round || '-' }} 분</span>
+                  <span class="config-item-label">행동 시간 단위</span>
+                  <span class="config-item-value">{{ roundUnitLabel }}</span>
                 </div>
                 <div class="config-item">
-                  <span class="config-item-label">총 라운드 수</span>
+                  <span class="config-item-label">기준 주차</span>
                   <span class="config-item-value">{{ Math.floor((simulationConfig.time_config?.total_simulation_hours * 60 / simulationConfig.time_config?.minutes_per_round)) || '-' }} 회</span>
                 </div>
                 <div class="config-item">
-                  <span class="config-item-label">시간당 활성</span>
+                  <span class="config-item-label">동시 활성 Agent</span>
                   <span class="config-item-value">{{ simulationConfig.time_config?.agents_per_hour_min }}-{{ simulationConfig.time_config?.agents_per_hour_max }}</span>
                 </div>
               </div>
@@ -228,11 +228,11 @@
                   <div class="agent-params">
                     <div class="param-group">
                       <div class="param-item">
-                        <span class="param-label">게시/시간</span>
+                        <span class="param-label">발화/시간</span>
                         <span class="param-value">{{ agent.posts_per_hour }}</span>
                       </div>
                       <div class="param-item">
-                        <span class="param-label">댓글/시간</span>
+                        <span class="param-label">상호작용/시간</span>
                         <span class="param-value">{{ agent.comments_per_hour }}</span>
                       </div>
                       <div class="param-item">
@@ -264,15 +264,15 @@
               </div>
             </div>
 
-            <!-- 플랫폼 설정 -->
+            <!-- 채널 설정 -->
             <div class="config-block">
               <div class="config-block-header">
-                <span class="config-block-title">추천 알고리즘 설정</span>
+                <span class="config-block-title">판매/여론 채널 가중치 설정</span>
               </div>
               <div class="platforms-grid">
                 <div v-if="simulationConfig.twitter_config" class="platform-card">
                   <div class="platform-card-header">
-                    <span class="platform-name">플랫폼 1: 광장 / 피드</span>
+                    <span class="platform-name">채널 1: 공식 광장 / 미디어 피드</span>
                   </div>
                   <div class="platform-params">
                     <div class="param-row">
@@ -299,7 +299,7 @@
                 </div>
                 <div v-if="simulationConfig.reddit_config" class="platform-card">
                   <div class="platform-card-header">
-                    <span class="platform-name">플랫폼 2: 주제 / 커뮤니티</span>
+                    <span class="platform-name">채널 2: 주제 커뮤니티 / 후기 검증</span>
                   </div>
                   <div class="platform-params">
                     <div class="param-row">
@@ -432,8 +432,8 @@
         </div>
 
         <div class="card-content">
-          <p class="api-note">POST /api/simulation/start</p>
-          <p class="description">시뮬레이션 환경이 준비 완료되어 시뮬레이션을 시작할 수 있습니다</p>
+          <p class="api-note">ROUTE /simulation/:simulationId/start</p>
+          <p class="description">Agent와 보험 판매 채널이 준비되어 3D 게임 공간을 시작할 수 있습니다</p>
 
           <div v-if="simulationConfig" class="insurance-preflight">
             <div class="preflight-header">
@@ -543,7 +543,7 @@
           </div>
           
           <!-- 시뮬레이션 라운드 수 설정 - 설정 생성이 완료되고 라운드 수가 계산된 후에만 표시 -->
-          <div v-if="simulationConfig && autoGeneratedRounds" class="rounds-config-section">
+          <div v-if="showLegacyRoundControls && simulationConfig && autoGeneratedRounds" class="rounds-config-section">
             <div class="rounds-header">
               <div class="header-left">
                 <span class="section-title">시뮬레이션 회차 설정</span>
@@ -616,7 +616,7 @@
             </Transition>
           </div>
 
-          <div class="action-group dual">
+          <div class="action-group triple">
             <button 
               class="action-btn secondary"
               @click="$emit('go-back')"
@@ -624,11 +624,18 @@
               ← 그래프 구축으로 돌아가기
             </button>
             <button 
-              class="action-btn primary"
+              class="action-btn secondary"
               :disabled="phase < 4"
               @click="handleStartSimulation"
             >
               두 세계 병렬 시뮬레이션 시작 ➝
+            </button>
+            <button 
+              class="action-btn primary"
+              :disabled="phase < 4"
+              @click="handleStartInsuranceGame"
+            >
+              보험시뮬레이션 게임 시작 ➝
             </button>
           </div>
         </div>
@@ -778,6 +785,7 @@ let lastLoggedConfigStage = ''
 // 시뮬레이션 라운드 수 설정
 const useCustomRounds = ref(false) // 기본값은 자동 설정 라운드 수 사용
 const customMaxRounds = ref(40)   // 기본 추천 40라운드
+const showLegacyRoundControls = true
 
 const salesFunnelStages = [
   { index: '01', name: '인지', signal: '노출/화제화' },
@@ -845,7 +853,7 @@ watch(currentStage, (newStage) => {
     phase.value = 2
     // 설정 생성 단계에 진입, 설정 폴링 시작
     if (!configTimer) {
-      addLog('양 플랫폼 시뮬레이션 설정 생성을 시작합니다...')
+      addLog('보험 게임 공간 설정 생성을 시작합니다...')
       startConfigPolling()
     }
   } else if (newStage === '시뮬레이션 스크립트 준비' || newStage === 'copying_scripts') {
@@ -866,6 +874,23 @@ const autoGeneratedRounds = computed(() => {
   const calculatedRounds = Math.floor((totalHours * 60) / minutesPerRound)
   // 최대 라운드 수가 40(권장값)보다 작지 않도록 하여 슬라이더 범위 이상을 방지
   return Math.max(calculatedRounds, 40)
+})
+
+const simulationTimeLabel = computed(() => {
+  const tc = simulationConfig.value?.time_config
+  if (!tc) return '-'
+  if (tc.round_unit === 'week' || tc.weeks_per_year) {
+    const years = tc.target_years || Math.round((tc.total_simulation_hours || 0) / (52 * 7 * 24)) || 10
+    return `${tc.start_year || 2026}년부터 ${years}년`
+  }
+  return `${tc.total_simulation_hours || '-'} 시간`
+})
+
+const roundUnitLabel = computed(() => {
+  const tc = simulationConfig.value?.time_config
+  if (!tc) return '-'
+  if (tc.round_unit === 'week' || tc.minutes_per_round === 10080) return '1주 / 라운드'
+  return `${tc.minutes_per_round || '-'} 분`
 })
 
 const agentSegmentCount = computed(() => {
@@ -919,21 +944,24 @@ const addLog = (msg) => {
   emit('add-log', msg)
 }
 
-// 시작 시뮬레이션 버튼 클릭 처리
+// 기존 두 세계 병렬 시뮬레이션 시작 버튼 클릭 처리
 const handleStartSimulation = () => {
-  // 부모 컴포넌트로 전달할 파라미터 구성
-  const params = {}
-  
+  const params = { mode: 'parallel' }
+
   if (useCustomRounds.value) {
-    // 사용자 정의 라운드 수, max_rounds 파라미터 전달
     params.maxRounds = customMaxRounds.value
     addLog(`시뮬레이션 시작, 사용자 정의 라운드 수: ${customMaxRounds.value} 라운드`)
   } else {
-    // 사용자가 자동 생성 라운드 수를 유지 선택, max_rounds 파라미터를 전달하지 않음
     addLog(`시뮬레이션 시작, 자동 설정 라운드 수 사용: ${autoGeneratedRounds.value} 라운드`)
   }
-  
+
   emit('next-step', params)
+}
+
+// 보험 시뮬레이션 게임 시작 버튼 클릭 처리
+const handleStartInsuranceGame = () => {
+  addLog('보험시뮬레이션 게임 시작')
+  emit('next-step', { mode: 'insurance-game' })
 }
 
 const truncateBio = (bio) => {
@@ -1173,7 +1201,7 @@ const fetchConfigRealtime = async () => {
           addLog(`  ├─ 시뮬레이션 시간: ${data.summary.simulation_hours}시간`)
           addLog(`  ├─ 초기 게시물: ${data.summary.initial_posts_count}개`)
           addLog(`  ├─ 핫 토픽: ${data.summary.hot_topics_count}개`)
-          addLog(`  └─ 플랫폼 설정: Twitter ${data.summary.has_twitter_config ? '✓' : '✗'}, Reddit ${data.summary.has_reddit_config ? '✓' : '✗'}`)
+          addLog(`  └─ 채널 가중치 설정: 광장 ${data.summary.has_twitter_config ? '✓' : '✗'}, 커뮤니티 ${data.summary.has_reddit_config ? '✓' : '✗'}`)
         }
         
         // 시간 설정 상세 표시
@@ -1412,6 +1440,21 @@ onUnmounted(() => {
 
 .action-group.dual .action-btn {
   width: 100%;
+}
+
+.action-group.triple {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.action-group.triple .action-btn {
+  width: 100%;
+  justify-content: center;
+  min-width: 0;
+  padding: 12px 10px;
+  line-height: 1.3;
+  text-align: center;
+  white-space: normal;
 }
 
 /* Info Card */

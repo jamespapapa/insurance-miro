@@ -90,8 +90,8 @@ const router = useRouter()
 const viewMode = ref('split') // graph | split | workbench
 
 // Step State
-const currentStep = ref(1) // 1: 그래프 구축, 2: 환경 구축, 3: 시뮬레이션 시작, 4: 보고서 생성, 5: 심층 상호작용
-const stepNames = ['그래프 구축', '환경 구축', '시뮬레이션 시작', '보고서 생성', '심층 상호작용']
+const currentStep = ref(1) // 1: 그래프 구축, 2: 환경 구축, 3: 보험 시뮬레이션 게임, 4: 보고서 생성, 5: 심층 상호작용
+const stepNames = ['그래프 구축', '환경 구축', '보험 시뮬레이션 게임', '보고서 생성', '심층 상호작용']
 
 // Data State
 const currentProjectId = ref(route.params.projectId)

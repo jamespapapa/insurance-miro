@@ -1,15 +1,14 @@
 <template>
   <div class="main-view">
-    <!-- Header -->
     <header class="app-header">
       <div class="header-left">
         <div class="brand" @click="router.push('/')">MIROFISH</div>
       </div>
-      
+
       <div class="header-center">
         <div class="view-switcher">
-          <button 
-            v-for="mode in ['graph', 'split', 'workbench']" 
+          <button
+            v-for="mode in ['graph', 'split', 'workbench']"
             :key="mode"
             class="switch-btn"
             :class="{ active: viewMode === mode }"
@@ -33,11 +32,9 @@
       </div>
     </header>
 
-    <!-- Main Content Area -->
     <main class="content-area">
-      <!-- Left Panel: Graph -->
       <div class="panel-wrapper left" :style="leftPanelStyle">
-        <GraphPanel 
+        <GraphPanel
           :graphData="graphData"
           :loading="graphLoading"
           :currentPhase="3"
@@ -47,7 +44,6 @@
         />
       </div>
 
-      <!-- Right Panel: Step3 시뮬레이션 시작 -->
       <div class="panel-wrapper right" :style="rightPanelStyle">
         <Step3Simulation
           :simulationId="currentSimulationId"
@@ -67,36 +63,30 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import GraphPanel from '../components/GraphPanel.vue'
 import Step3Simulation from '../components/Step3Simulation.vue'
 import { getProject, getGraphData } from '../api/graph'
-import { getSimulation, getSimulationConfig, stopSimulation, closeSimulationEnv, getEnvStatus } from '../api/simulation'
+import { closeSimulationEnv, getEnvStatus, getSimulation, getSimulationConfig, stopSimulation } from '../api/simulation'
 
 const route = useRoute()
 const router = useRouter()
 
-// Props
-const props = defineProps({
+defineProps({
   simulationId: String
 })
 
-// Layout State
 const viewMode = ref('split')
-
-// Data State
 const currentSimulationId = ref(route.params.simulationId)
-// 초기화 시 query 파라미터에서 maxRounds를 직접 가져와, 자식 컴포넌트가 즉시 값을 가져올 수 있도록 보장
 const maxRounds = ref(route.query.maxRounds ? parseInt(route.query.maxRounds) : null)
-const minutesPerRound = ref(30) // 기본값: 각 라운드 30분
+const minutesPerRound = ref(30)
 const projectData = ref(null)
 const graphData = ref(null)
 const graphLoading = ref(false)
 const systemLogs = ref([])
-const currentStatus = ref('processing') // processing | completed | error
+const currentStatus = ref('processing')
 
-// --- Computed Layout Styles ---
 const leftPanelStyle = computed(() => {
   if (viewMode.value === 'graph') return { width: '100%', opacity: 1, transform: 'translateX(0)' }
   if (viewMode.value === 'workbench') return { width: '0%', opacity: 0, transform: 'translateX(-20px)' }
@@ -109,10 +99,7 @@ const rightPanelStyle = computed(() => {
   return { width: '50%', opacity: 1, transform: 'translateX(0)' }
 })
 
-// --- Status Computed ---
-const statusClass = computed(() => {
-  return currentStatus.value
-})
+const statusClass = computed(() => currentStatus.value)
 
 const statusText = computed(() => {
   if (currentStatus.value === 'error') return 'Error'
@@ -122,9 +109,15 @@ const statusText = computed(() => {
 
 const isSimulating = computed(() => currentStatus.value === 'processing')
 
-// --- Helpers ---
 const addLog = (msg) => {
-  const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '.' + new Date().getMilliseconds().toString().padStart(3, '0')
+  const now = new Date()
+  const time = now.toLocaleTimeString('en-US', {
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  }) + '.' + now.getMilliseconds().toString().padStart(3, '0')
+
   systemLogs.value.push({ time, msg })
   if (systemLogs.value.length > 200) {
     systemLogs.value.shift()
@@ -135,36 +128,27 @@ const updateStatus = (status) => {
   currentStatus.value = status
 }
 
-// --- Layout Methods ---
 const toggleMaximize = (target) => {
-  if (viewMode.value === target) {
-    viewMode.value = 'split'
-  } else {
-    viewMode.value = target
-  }
+  viewMode.value = viewMode.value === target ? 'split' : target
 }
 
 const handleGoBack = async () => {
-  // Step 2로 돌아가기 전에, 실행 중인 시뮬레이션을 먼저 종료
   addLog('Step 2로 돌아갈 준비 중, 시뮬레이션을 종료하는 중...')
-  
-  // 폴링 중지
   stopGraphRefresh()
-  
+
   try {
-    // 먼저 시뮬레이션 환경을 우아하게 종료하려고 시도
     const envStatusRes = await getEnvStatus({ simulation_id: currentSimulationId.value })
-    
+
     if (envStatusRes.success && envStatusRes.data?.env_alive) {
       addLog('시뮬레이션 환경을 종료하는 중...')
       try {
-        await closeSimulationEnv({ 
+        await closeSimulationEnv({
           simulation_id: currentSimulationId.value,
           timeout: 10
         })
         addLog('✓ 시뮬레이션 환경이 종료되었습니다')
       } catch (closeErr) {
-        addLog(`시뮬레이션 환경 종료에 실패하여 강제 중지를 시도합니다...`)
+        addLog('시뮬레이션 환경 종료에 실패하여 강제 중지를 시도합니다...')
         try {
           await stopSimulation({ simulation_id: currentSimulationId.value })
           addLog('✓ 시뮬레이션이 강제 중지되었습니다')
@@ -172,43 +156,32 @@ const handleGoBack = async () => {
           addLog(`강제 중지 실패: ${stopErr.message}`)
         }
       }
-    } else {
-      // 환경이 실행 중이 아님, 프로세스를 중지해야 하는지 확인
-      if (isSimulating.value) {
-        addLog('시뮬레이션 프로세스를 중지하는 중...')
-        try {
-          await stopSimulation({ simulation_id: currentSimulationId.value })
-          addLog('✓ 시뮬레이션이 중지되었습니다')
-        } catch (err) {
-          addLog(`시뮬레이션 중지 실패: ${err.message}`)
-        }
+    } else if (isSimulating.value) {
+      addLog('시뮬레이션 프로세스를 중지하는 중...')
+      try {
+        await stopSimulation({ simulation_id: currentSimulationId.value })
+        addLog('✓ 시뮬레이션이 중지되었습니다')
+      } catch (err) {
+        addLog(`시뮬레이션 중지 실패: ${err.message}`)
       }
     }
   } catch (err) {
     addLog(`시뮬레이션 상태 확인 실패: ${err.message}`)
   }
-  
-  // Step 2 (환경 설정)로 돌아가기
+
   router.push({ name: 'Simulation', params: { simulationId: currentSimulationId.value } })
 }
 
 const handleNextStep = () => {
-  // Step3Simulation 컴포넌트가 보고서 생성과 라우팅 이동을 직접 처리합니다
-  // 이 메서드는 예비용으로만 사용됩니다
   addLog('Step 4: 보고서 생성으로 진입')
 }
 
-// --- Data Logic ---
 const loadSimulationData = async () => {
   try {
     addLog(`시뮬레이션 데이터 로드: ${currentSimulationId.value}`)
-    
-    // simulation 정보 가져오기
     const simRes = await getSimulation(currentSimulationId.value)
+
     if (simRes.success && simRes.data) {
-      const simData = simRes.data
-      
-      // minutes_per_round를 얻기 위해 simulation config을 가져오기
       try {
         const configRes = await getSimulationConfig(currentSimulationId.value)
         if (configRes.success && configRes.data?.time_config?.minutes_per_round) {
@@ -218,15 +191,13 @@ const loadSimulationData = async () => {
       } catch (configErr) {
         addLog(`시간 설정을 가져오지 못해 기본값 사용: ${minutesPerRound.value}분/라운드`)
       }
-      
-      // project 정보 가져오기
-      if (simData.project_id) {
-        const projRes = await getProject(simData.project_id)
+
+      if (simRes.data.project_id) {
+        const projRes = await getProject(simRes.data.project_id)
         if (projRes.success && projRes.data) {
           projectData.value = projRes.data
           addLog(`프로젝트 로드 성공: ${projRes.data.project_id}`)
-          
-          // graph 데이터 가져오기
+
           if (projRes.data.graph_id) {
             await loadGraph(projRes.data.graph_id)
           }
@@ -241,12 +212,10 @@ const loadSimulationData = async () => {
 }
 
 const loadGraph = async (graphId) => {
-  // 시뮬레이션 중일 때는 자동 새로고침에서 전체 화면 loading을 표시하지 않아 깜빡임을 방지
-  // 수동 새로고침 또는 초기 로드 시 loading 표시
   if (!isSimulating.value) {
     graphLoading.value = true
   }
-  
+
   try {
     const res = await getGraphData(graphId)
     if (res.success) {
@@ -268,13 +237,11 @@ const refreshGraph = () => {
   }
 }
 
-// --- Auto Refresh Logic ---
 let graphRefreshTimer = null
 
 const startGraphRefresh = () => {
   if (graphRefreshTimer) return
   addLog('그래프 실시간 새로고침 시작 (30s)')
-  // 즉시 한 번 새로고침한 다음 30초마다 새로고침
   graphRefreshTimer = setInterval(refreshGraph, 30000)
 }
 
@@ -296,12 +263,11 @@ watch(isSimulating, (newValue) => {
 
 onMounted(() => {
   addLog('SimulationRunView 초기화')
-  
-  // maxRounds 설정 기록 (값은 초기화 시 query 파라미터에서 가져옴)
+
   if (maxRounds.value) {
     addLog(`사용자 지정 시뮬레이션 라운드 수: ${maxRounds.value}`)
   }
-  
+
   loadSimulationData()
 })
 
@@ -315,12 +281,11 @@ onUnmounted(() => {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #FFF;
+  background: #FFFFFF;
   overflow: hidden;
   font-family: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
 }
 
-/* Header */
 .app-header {
   height: 60px;
   border-bottom: 1px solid #EAEAEA;
@@ -328,15 +293,9 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  background: #FFF;
+  background: #FFFFFF;
   z-index: 100;
   position: relative;
-}
-
-.header-center {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
 }
 
 .brand {
@@ -345,6 +304,12 @@ onUnmounted(() => {
   font-size: 18px;
   letter-spacing: 1px;
   cursor: pointer;
+}
+
+.header-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 .view-switcher {
@@ -361,16 +326,16 @@ onUnmounted(() => {
   padding: 6px 16px;
   font-size: 12px;
   font-weight: 600;
-  color: #666;
+  color: #666666;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .switch-btn.active {
-  background: #FFF;
-  color: #000;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  background: #FFFFFF;
+  color: #000000;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .header-right {
@@ -389,12 +354,12 @@ onUnmounted(() => {
 .step-num {
   font-family: 'JetBrains Mono', monospace;
   font-weight: 700;
-  color: #999;
+  color: #999999;
 }
 
 .step-name {
   font-weight: 700;
-  color: #000;
+  color: #000000;
 }
 
 .step-divider {
@@ -408,7 +373,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: #666;
+  color: #666666;
   font-weight: 500;
 }
 
@@ -416,16 +381,28 @@ onUnmounted(() => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #CCC;
+  background: #CCCCCC;
 }
 
-.status-indicator.processing .dot { background: #FF5722; animation: pulse 1s infinite; }
-.status-indicator.completed .dot { background: #4CAF50; }
-.status-indicator.error .dot { background: #F44336; }
+.status-indicator.processing .dot {
+  background: #FF5722;
+  animation: pulse 1s infinite;
+}
 
-@keyframes pulse { 50% { opacity: 0.5; } }
+.status-indicator.completed .dot {
+  background: #4CAF50;
+}
 
-/* Content */
+.status-indicator.error .dot {
+  background: #F44336;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
 .content-area {
   flex: 1;
   display: flex;
@@ -444,4 +421,3 @@ onUnmounted(() => {
   border-right: 1px solid #EAEAEA;
 }
 </style>
-

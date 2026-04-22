@@ -25,6 +25,16 @@ from .zep_entity_reader import EntityNode, ZepEntityReader
 
 logger = get_logger('mirofish.oasis_profile')
 CHINESE_CHAR_PATTERN = re.compile(r'[\u4e00-\u9fff]')
+KOREAN_LAST_NAMES = [
+    "김", "이", "박", "최", "정", "강", "조", "윤", "장", "임",
+    "한", "오", "서", "신", "권", "황", "안", "송", "류", "홍",
+]
+KOREAN_GIVEN_NAMES = [
+    "민영", "민호", "서연", "현우", "지은", "도윤", "수진", "민재",
+    "하늘", "유진", "태준", "가은", "지훈", "소라", "준호", "나윤",
+    "은비", "성민", "지아", "기훈", "다은", "재원", "세희", "우진",
+    "예린", "민규", "지호", "윤서", "준영", "혜린",
+]
 
 
 @dataclass
@@ -54,6 +64,7 @@ class OasisAgentProfile:
     interested_topics: List[str] = field(default_factory=list)
     
     # 출처 엔티티 정보
+    source_entity_name: Optional[str] = None
     source_entity_uuid: Optional[str] = None
     source_entity_type: Optional[str] = None
     
@@ -64,6 +75,7 @@ class OasisAgentProfile:
         profile = {
             "user_id": self.user_id,
             "username": self.user_name,  # OASIS 라이브러리는 필드명이 username(언더스코어 없음)이어야 함
+            "realname": self.name,
             "name": self.name,
             "bio": self.bio,
             "persona": self.persona,
@@ -84,6 +96,8 @@ class OasisAgentProfile:
             profile["profession"] = self.profession
         if self.interested_topics:
             profile["interested_topics"] = self.interested_topics
+        if self.source_entity_name:
+            profile["source_entity_name"] = self.source_entity_name
         
         return profile
     
@@ -114,6 +128,8 @@ class OasisAgentProfile:
             profile["profession"] = self.profession
         if self.interested_topics:
             profile["interested_topics"] = self.interested_topics
+        if self.source_entity_name:
+            profile["source_entity_name"] = self.source_entity_name
         
         return profile
     
@@ -135,6 +151,7 @@ class OasisAgentProfile:
             "country": self.country,
             "profession": self.profession,
             "interested_topics": self.interested_topics,
+            "source_entity_name": self.source_entity_name,
             "source_entity_uuid": self.source_entity_uuid,
             "source_entity_type": self.source_entity_type,
             "created_at": self.created_at,
@@ -229,8 +246,9 @@ class OasisProfileGenerator:
         """
         entity_type = entity.get_entity_type() or "Entity"
         
-        # 기본 정보
-        name = entity.name
+        # 기본 정보: 그래프 엔티티는 출처로 보존하고, 시뮬레이션 참여자는 한국식 실명으로 생성합니다.
+        source_entity_name = entity.name
+        name = self._generate_korean_person_name(user_id)
         user_name = self._generate_username(name)
         
         # 컨텍스트 정보 구성
@@ -243,7 +261,8 @@ class OasisProfileGenerator:
                 entity_type=entity_type,
                 entity_summary=entity.summary,
                 entity_attributes=entity.attributes,
-                context=context
+                context=context,
+                source_entity_name=source_entity_name,
             )
         else:
             # 규칙 기반으로 기본 페르소나 생성
@@ -251,7 +270,8 @@ class OasisProfileGenerator:
                 entity_name=name,
                 entity_type=entity_type,
                 entity_summary=entity.summary,
-                entity_attributes=entity.attributes
+                entity_attributes=entity.attributes,
+                source_entity_name=source_entity_name,
             )
         
         return OasisAgentProfile(
@@ -270,6 +290,7 @@ class OasisProfileGenerator:
             country=self._normalize_country(profile_data.get("country")),
             profession=profile_data.get("profession"),
             interested_topics=profile_data.get("interested_topics", []),
+            source_entity_name=source_entity_name,
             source_entity_uuid=entity.uuid,
             source_entity_type=entity_type,
         )
@@ -283,6 +304,12 @@ class OasisProfileGenerator:
         # 랜덤 접미사를 추가해 중복 방지
         suffix = random.randint(100, 999)
         return f"{username}_{suffix}"
+
+    def _generate_korean_person_name(self, user_id: int) -> str:
+        """보험 시뮬레이션 Agent에 사용할 한국식 실명 생성"""
+        last = KOREAN_LAST_NAMES[user_id % len(KOREAN_LAST_NAMES)]
+        given = KOREAN_GIVEN_NAMES[(user_id * 7 + 3) % len(KOREAN_GIVEN_NAMES)]
+        return f"{last}{given}"
     
     def _search_zep_for_entity(self, entity: EntityNode) -> Dict[str, Any]:
         """
@@ -501,7 +528,8 @@ class OasisProfileGenerator:
         entity_type: str,
         entity_summary: str,
         entity_attributes: Dict[str, Any],
-        context: str
+        context: str,
+        source_entity_name: str = ""
     ) -> Dict[str, Any]:
         """
         LLM을 사용해 매우 상세한 페르소나 생성
@@ -515,11 +543,11 @@ class OasisProfileGenerator:
         
         if is_individual:
             prompt = self._build_individual_persona_prompt(
-                entity_name, entity_type, entity_summary, entity_attributes, context
+                entity_name, entity_type, entity_summary, entity_attributes, context, source_entity_name
             )
         else:
             prompt = self._build_group_persona_prompt(
-                entity_name, entity_type, entity_summary, entity_attributes, context
+                entity_name, entity_type, entity_summary, entity_attributes, context, source_entity_name
             )
 
         # 여러 번 생성 시도, 성공하거나 최대 재시도 횟수에 도달할 때까지
@@ -558,6 +586,7 @@ class OasisProfileGenerator:
                         result["persona"] = entity_summary or f"{entity_name}는 {entity_type}입니다."
 
                     result = self._normalize_generated_profile(result)
+                    result = self._ensure_insurance_specific_profile(result, entity_name, source_entity_name, entity_type)
                     return result
                     
                 except json.JSONDecodeError as je:
@@ -568,6 +597,7 @@ class OasisProfileGenerator:
                     if result.get("_fixed"):
                         del result["_fixed"]
                         result = self._normalize_generated_profile(result)
+                        result = self._ensure_insurance_specific_profile(result, entity_name, source_entity_name, entity_type)
                         return result
                     
                     last_error = je
@@ -580,7 +610,7 @@ class OasisProfileGenerator:
         
         logger.warning(f"LLM 페르소나 생성 실패（{max_attempts}회 시도）: {last_error}, 규칙 기반으로 생성")
         return self._generate_profile_rule_based(
-            entity_name, entity_type, entity_summary, entity_attributes
+            entity_name, entity_type, entity_summary, entity_attributes, source_entity_name
         )
 
     def _normalize_generated_profile(self, profile: Dict[str, Any]) -> Dict[str, Any]:
@@ -595,6 +625,44 @@ class OasisProfileGenerator:
             raise ValueError("프로필에 중국어가 남아 있어 한국어 정규화에 실패했습니다")
 
         return normalized
+
+    def _ensure_insurance_specific_profile(
+        self,
+        profile: Dict[str, Any],
+        person_name: str,
+        source_entity_name: str,
+        entity_type: str,
+    ) -> Dict[str, Any]:
+        """LLM 결과가 추상적일 때 보험 가입 행동 명세를 보강"""
+        enriched = dict(profile)
+        bio = str(enriched.get("bio") or "").strip()
+        if not bio.startswith(person_name):
+            bio = f"{person_name}는 {source_entity_name or entity_type} 맥락에서 라이프핏 건강보험을 검토하는 참여자입니다. {bio}".strip()
+        enriched["bio"] = bio[:260]
+
+        persona = str(enriched.get("persona") or "").strip()
+        required_terms = ["보험료", "보장", "약관", "개인정보", "해지", "전환"]
+        if len(persona) < 500 or not all(term in persona for term in required_terms[:4]):
+            persona = (
+                f"{persona} {person_name}는 현재 보유 보험과 라이프핏 건강보험의 월 보험료, 보장범위, 면책/감액 조건, 약관복잡성, 개인정보 연동 범위를 비교해 가입 여부를 결정한다. "
+                "가입 전에는 설계사 설명, 공식 FAQ, 커뮤니티 후기, 실제 청구 사례를 교차 검증한다. "
+                "가입 후에는 청구 경험이 원활하고 보험료 인상 압박이 낮으면 유지하지만, 보장 실효성이 낮거나 개인정보 활용 조건이 불명확하거나 경쟁상품의 보장 대비 가격이 더 좋으면 특약 조정, 해지 상담, 다른 보험으로 전환하는 행동을 한다."
+            ).strip()
+        enriched["persona"] = re.sub(r"\s+", " ", persona)
+
+        topics = enriched.get("interested_topics")
+        if not isinstance(topics, list):
+            topics = []
+        for topic in ["건강보험", "보험료", "보장범위", "약관", "개인정보", "보험 해지/전환"]:
+            if topic not in topics:
+                topics.append(topic)
+        enriched["interested_topics"] = topics[:10]
+
+        if not enriched.get("country"):
+            enriched["country"] = "한국"
+        if not enriched.get("profession"):
+            enriched["profession"] = entity_type
+        return enriched
 
     def _profile_contains_chinese(self, value: Any) -> bool:
         """프로필에 중국어 한자가 남아 있는지 확인"""
@@ -728,9 +796,11 @@ class OasisProfileGenerator:
     def _get_system_prompt(self, is_individual: bool) -> str:
         """시스템 프롬프트 가져오기"""
         base_prompt = (
-            "당신은 소셜 미디어 사용자 프로필 생성 전문가입니다. "
-            "여론 시뮬레이션에 사용할 상세하고 현실적인 페르소나를 생성하며, "
+            "당신은 한국 보험상품 가입/유지 시뮬레이션용 사용자 프로필 생성 전문가입니다. "
+            "여론과 보험 가입 행동 시뮬레이션에 사용할 상세하고 현실적인 페르소나를 생성하며, "
             "가능한 한 실제 맥락을 충실히 반영합니다. "
+            "이름은 박민영, 이민호처럼 실제 한국 사람 이름 형태로 다루고, "
+            "보험료 민감도, 보장범위 판단, 약관 이해도, 개인정보 우려, 가입 후 유지/해지/전환 조건을 반드시 구체화합니다. "
             "반드시 유효한 JSON 형식으로만 반환해야 하며, "
             "모든 문자열 값에는 이스케이프되지 않은 줄바꿈 문자가 포함되면 안 됩니다. "
             "모든 설명은 한국어로 작성하세요."
@@ -743,16 +813,18 @@ class OasisProfileGenerator:
         entity_type: str,
         entity_summary: str,
         entity_attributes: Dict[str, Any],
-        context: str
+        context: str,
+        source_entity_name: str = ""
     ) -> str:
         """개인 엔터티의 상세 페르소나 프롬프트 구성"""
         
         attrs_str = json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else "없음"
         context_str = context[:3000] if context else "추가 컨텍스트 없음"
         
-        return f"""엔터티에 대해 상세한 소셜 미디어 사용자 페르소나를 생성하고, 가능한 한 실제 맥락을 충실히 반영하세요.
+        return f"""엔터티에 대해 상세한 보험상품 가입 시뮬레이션용 사용자 페르소나를 생성하고, 가능한 한 실제 한국 보험소비자 맥락을 충실히 반영하세요.
 
-엔터티 이름: {entity_name}
+시뮬레이션 참여자 이름: {entity_name}
+출처 그래프 엔터티: {source_entity_name or entity_name}
 엔터티 유형: {entity_type}
 엔터티 요약: {entity_summary}
 엔터티 속성: {attrs_str}
@@ -762,9 +834,12 @@ class OasisProfileGenerator:
 
 JSON을 생성, 다음 필드를 포함:
 
-1. bio: 소셜 미디어 소개, 200자
+1. bio: 소셜 미디어 소개, 200자. 반드시 "{entity_name}"이라는 실제 사람 이름으로 시작
 2. persona: 상세 페르소나 설명(2000자의 순수 텍스트), 다음을 포함:
    - 기본 정보(나이, 직업, 학력, 거주지)
+   - 보험 명세(현재 보유 보험, 월 보험료 부담 수준, 가족력/건강 리스크, 라이프핏 건강보험 가입/보류/거절 기준)
+   - 의사결정 규칙(보험료, 보장범위, 약관복잡성, 개인정보 연동 중 무엇을 가장 민감하게 보는지)
+   - 가입 후 행동 규칙(가입한 뒤 유지, 청구 문의, 특약 조정, 해지, 경쟁상품 전환 중 어떤 조건에서 움직이는지)
    - 인물 배경(중요 경험, 사건과의 연관, 사회적 관계)
    - 성격 특성(MBTI 유형, 핵심 성격, 감정 표현 방식)
    - 소셜 미디어 행동(게시 빈도, 콘텐츠 선호, 상호작용 스타일, 언어 특징)
@@ -784,6 +859,7 @@ JSON을 생성, 다음 필드를 포함:
 - 모든 설명은 한국어를 사용하세요(단 gender 필드는 반드시 영어 male/female)
 - 내용은 엔티티 정보와 일치해야 함
 - age는 유효한 정수여야 하며, gender는 "male" 또는 "female"이어야 함
+- "어떤 이슈에 관심 있는 사용자" 같은 추상 표현으로 끝내지 말고, 보험 가입/유지/해지 행동을 결정할 수 있는 구체 명세를 작성하세요
 """
 
     def _build_group_persona_prompt(
@@ -792,16 +868,18 @@ JSON을 생성, 다음 필드를 포함:
         entity_type: str,
         entity_summary: str,
         entity_attributes: Dict[str, Any],
-        context: str
+        context: str,
+        source_entity_name: str = ""
     ) -> str:
         """집단/기관 엔티티의 상세 페르소나 프롬프트를 구성"""
         
         attrs_str = json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else "없음"
         context_str = context[:3000] if context else "추가 컨텍스트 없음"
         
-        return f"""기관/집단 엔티티를 위한 상세 소셜 미디어 계정 설정을 생성하고, 가능한 한 실제 맥락을 충실히 반영하세요.
+        return f"""기관/집단 엔티티를 대표해서 말하는 한국인 운영자 페르소나를 생성하고, 가능한 한 실제 보험시장 맥락을 충실히 반영하세요.
 
-엔티티 이름: {entity_name}
+시뮬레이션 참여자 이름: {entity_name}
+대표/출처 그래프 엔터티: {source_entity_name or entity_name}
 엔티티 유형: {entity_type}
 엔티티 요약: {entity_summary}
 엔티티 속성: {attrs_str}
@@ -811,9 +889,12 @@ JSON을 생성, 다음 필드를 포함:
 
 JSON을 생성하고, 다음 필드를 포함하세요:
 
-1. bio: 공식 계정 소개, 200자, 전문적이고 적절하게
+1. bio: 대표 운영자 소개, 200자. 반드시 "{entity_name}"이라는 실제 사람 이름으로 시작하고, 어떤 기관/집단을 대표하는지 명시
 2. persona: 상세 계정 설정 설명(2000자의 순수 텍스트), 반드시 포함:
-   - 기관 기본 정보(정식 명칭, 기관 성격, 설립 배경, 주요 기능)
+   - 대표하는 기관/집단 기본 정보(정식 명칭, 기관 성격, 주요 기능)
+   - 운영자 개인 배경(직무, 연차, 책임 범위, 의사결정 권한)
+   - 보험 명세(라이프핏 건강보험을 어떤 기준으로 홍보/검증/비판하는지, 고객 가입·해지·전환을 어떻게 해석하는지)
+   - 가입 후 행동 규칙(민원, 청구 문의, 해지 요청, 경쟁상품 전환 이슈가 발생할 때 어떤 메시지를 내는지)
    - 계정 포지셔닝(계정 유형, 목표 수용자, 핵심 기능)
    - 발언 스타일(언어 특징, 자주 쓰는 표현, 금기 주제)
    - 게시 콘텐츠 특징(콘텐츠 유형, 게시 빈도, 활동 시간대)
@@ -832,80 +913,68 @@ JSON을 생성하고, 다음 필드를 포함하세요:
 - persona는 하나의 일관된 문단 텍스트 설명이어야 하며, 줄바꿈 문자를 사용하지 말 것
 - 모든 설명은 한국어를 사용할 것(단, gender 필드는 영어 "other"여야 함)
 - age는 정수 30이어야 하고, gender는 문자열 "other"여야 함
-- 기관 계정의 발언은 그 신분 포지셔닝에 부합해야 함"""
+- 기관 계정의 발언은 그 신분 포지셔닝에 부합해야 함
+- 무의미한 추상 설명 대신 보험 가입/유지/해지/전환 판단에 쓰일 행동 조건을 구체적으로 작성하세요"""
     
     def _generate_profile_rule_based(
         self,
         entity_name: str,
         entity_type: str,
         entity_summary: str,
-        entity_attributes: Dict[str, Any]
+        entity_attributes: Dict[str, Any],
+        source_entity_name: str = ""
     ) -> Dict[str, Any]:
         """규칙을 사용해 기본 페르소나 생성"""
         
         # 엔티티 유형에 따라 서로 다른 페르소나 생성
         entity_type_lower = entity_type.lower()
+        source_label = source_entity_name or entity_type
+        age = random.randint(28, 56)
+        gender = random.choice(["male", "female"])
+        mbti = random.choice(self.MBTI_TYPES)
+
+        def insurance_persona(profession: str, stance: str, topics: List[str]) -> Dict[str, Any]:
+            monthly_budget = random.choice(["월 8만원 이하", "월 10만원 안팎", "월 15만원까지", "기존 보험 포함 월 20만원 이하"])
+            current_cover = random.choice(["실손보험만 보유", "암보험 1건과 실손보험 보유", "부모님 권유로 가입한 오래된 건강보험 보유", "기존 보험이 거의 없음"])
+            risk = random.choice(["가족력 때문에 암 보장을 중시", "심혈관/뇌혈관 보장을 우선 확인", "자녀 의료비와 가족 보장을 함께 고려", "갱신 보험료와 청구 거절 가능성을 걱정"])
+            decision = random.choice(["약관 예외가 많으면 가입하지 않음", "보험료 대비 보장 범위가 명확하면 가입", "설계사 설명보다 커뮤니티 후기와 실제 청구 사례를 더 신뢰", "개인정보 연동 범위가 불명확하면 보류"])
+            after = random.choice(["가입 뒤 1년 안에 보험료 인상이나 청구 불편을 느끼면 해지 상담을 요청", "가입 뒤 청구 경험이 좋으면 유지하고 가족 특약을 검토", "경쟁상품이 같은 보장에 더 저렴하면 갈아타기를 검토", "개인정보 연동 조건이 바뀌면 데이터 제공을 철회하고 유지 여부를 재검토"])
+            bio = f"{entity_name}는 {profession}이며 {source_label} 맥락에서 라이프핏 건강보험을 검토하는 현실적인 보험 소비자/채널 참여자입니다."
+            persona = (
+                f"{entity_name}는 {age}세 한국 거주자로 {profession} 역할을 가진다. "
+                f"현재 보험 상태는 {current_cover}이고, 보험료 허용선은 {monthly_budget}이다. "
+                f"건강 리스크는 {risk}이며 라이프핏 건강보험에 대해서는 {stance}. "
+                f"가입 판단 기준은 {decision}이고, 약관복잡성·보험료·보장범위·개인정보 연동 중 무엇이 실제 손해로 이어질지를 따진다. "
+                f"소셜 채널에서는 비교표, 실제 후기, 설계사 설명의 빈틈을 확인한 뒤 신중하게 반응한다. "
+                f"가입 후 행동 규칙은 {after}이다. "
+                f"말투는 구체적인 숫자와 사례를 요구하는 편이며, 모호한 홍보 문구보다 청구 절차와 면책 조건을 중시한다."
+            )
+            return {
+                "bio": bio,
+                "persona": persona,
+                "age": age,
+                "gender": gender,
+                "mbti": mbti,
+                "country": "한국",
+                "profession": profession,
+                "interested_topics": topics,
+            }
         
         if entity_type_lower in ["student", "alumni"]:
-            return {
-                "bio": f"{entity_type} 분야에 관심이 많고 사회 이슈에도 적극적으로 반응합니다.",
-                "persona": f"{entity_name}는 학업과 사회적 논의에 적극적으로 참여하는 {entity_type} 유형의 인물입니다. 자신의 관점을 꾸준히 공유하고 또래와의 연결을 중시합니다.",
-                "age": random.randint(18, 30),
-                "gender": random.choice(["male", "female"]),
-                "mbti": random.choice(self.MBTI_TYPES),
-                "country": random.choice(self.COUNTRIES),
-                "profession": "학생",
-                "interested_topics": ["교육", "사회 이슈", "기술"],
-            }
+            return insurance_persona("2030 예비 가입자", "보험료 부담 때문에 가입 전 비교가 길어지는 편", ["보험료", "청년 건강관리", "커뮤니티 후기"])
         
         elif entity_type_lower in ["publicfigure", "expert", "faculty"]:
-            return {
-                "bio": "자신의 분야에서 전문성과 영향력을 인정받는 인물입니다.",
-                "persona": f"{entity_name}는 중요한 이슈에 대해 전문적인 의견과 통찰을 공유하는 {entity_type} 유형의 인물입니다. 공적 담론에서 신뢰받는 설명력과 영향력을 갖고 있습니다.",
-                "age": random.randint(35, 60),
-                "gender": random.choice(["male", "female"]),
-                "mbti": random.choice(["ENTJ", "INTJ", "ENTP", "INTP"]),
-                "country": random.choice(self.COUNTRIES),
-                "profession": entity_attributes.get("occupation", "전문가"),
-                "interested_topics": ["정치", "경제", "사회문화"],
-            }
+            return insurance_persona(entity_attributes.get("occupation", "보험/금융 전문가"), "상품 구조와 소비자 보호 장치를 분석적으로 검토하는 편", ["보험상품", "소비자 보호", "약관"])
         
         elif entity_type_lower in ["mediaoutlet", "socialmediaplatform"]:
-            return {
-                "bio": f"{entity_name}의 공식 계정으로 뉴스와 주요 업데이트를 전합니다.",
-                "persona": f"{entity_name}는 뉴스와 현안을 전달하고 공적 담론을 촉진하는 미디어 성격의 계정입니다. 시의성 있는 업데이트를 공유하며 이용자와 적극적으로 소통합니다.",
-                "age": 30,  # 기관 가상 나이
-                "gender": "other",  # 기관은 other 사용
-                "mbti": "ISTJ",  # 기관 스타일：엄격하고 보수적
-                "country": "한국",
-                "profession": "미디어",
-                "interested_topics": ["일반 뉴스", "시사", "공공 이슈"],
-            }
+            return insurance_persona("보험 전문 기자/콘텐츠 운영자", "출시 홍보보다 보험료·보장 실효성·개인정보 쟁점을 우선 기사화하는 편", ["보험 뉴스", "소비자 이슈", "개인정보"])
         
         elif entity_type_lower in ["university", "governmentagency", "ngo", "organization"]:
-            return {
-                "bio": f"{entity_name}의 공식 계정입니다.",
-                "persona": f"{entity_name}는 공식 입장과 공지사항을 전달하고 관련 이해관계자와 소통하는 기관 성격의 계정입니다.",
-                "age": 30,  # 기관 가상 나이
-                "gender": "other",  # 기관은 other 사용
-                "mbti": "ISTJ",  # 기관 스타일：엄격하고 보수적
-                "country": "한국",
-                "profession": entity_type,
-                "interested_topics": ["공공 정책", "커뮤니티", "공식 공지"],
-            }
+            return insurance_persona("보험사/기관 커뮤니케이션 담당자", "민원 확산을 줄이기 위해 약관 요약과 청구 절차를 보수적으로 설명하는 편", ["보험 민원", "약관 안내", "채널 운영"])
         
         else:
             # 기본 페르소나
-            return {
-                "bio": entity_summary[:150] if entity_summary else f"{entity_type}: {entity_name}",
-                "persona": entity_summary or f"{entity_name}는 사회적 논의에 참여하는 {entity_type} 유형의 인물입니다.",
-                "age": random.randint(25, 50),
-                "gender": random.choice(["male", "female"]),
-                "mbti": random.choice(self.MBTI_TYPES),
-                "country": random.choice(self.COUNTRIES),
-                "profession": entity_type,
-                "interested_topics": ["일반 이슈", "사회 이슈"],
-            }
+            return insurance_persona(entity_attributes.get("occupation", entity_type), "출시 초기에는 관심을 보이지만 실제 가입 전 검증을 요구하는 편", ["건강보험", "보험료", "보장범위", "청구 경험"])
     
     def set_graph_id(self, graph_id: str):
         """Zep 검색을 위해 그래프 ID 설정"""
@@ -998,12 +1067,18 @@ JSON을 생성하고, 다음 필드를 포함하세요:
             except Exception as e:
                 logger.error(f"엔티티 {entity.name}의 페르소나 생성 실패: {str(e)}")
                 # 기본 profile 생성
+                fallback_name = self._generate_korean_person_name(idx)
                 fallback_profile = OasisAgentProfile(
                     user_id=idx,
-                    user_name=self._generate_username(entity.name),
-                    name=entity.name,
-                    bio=f"{entity_type}: {entity.name}",
-                    persona=entity.summary or f"A participant in social discussions.",
+                    user_name=self._generate_username(fallback_name),
+                    name=fallback_name,
+                    bio=f"{fallback_name}는 {entity.name} 맥락을 대표하는 보험 시뮬레이션 참여자입니다.",
+                    persona=(
+                        entity.summary or
+                        f"{fallback_name}는 라이프핏 건강보험의 보험료, 보장범위, 약관복잡성, 개인정보 연동 조건을 비교해 가입 여부를 판단합니다. "
+                        "가입 후에는 청구 경험, 보험료 갱신, 경쟁상품 조건에 따라 유지·해지·전환 행동을 보입니다."
+                    ),
+                    source_entity_name=entity.name,
                     source_entity_uuid=entity.uuid,
                     source_entity_type=entity_type,
                 )
@@ -1056,10 +1131,11 @@ JSON을 생성하고, 다음 필드를 포함하세요:
                         completed_count[0] += 1
                     profiles[idx] = OasisAgentProfile(
                         user_id=idx,
-                        user_name=self._generate_username(entity.name),
-                        name=entity.name,
-                        bio=f"{entity_type}: {entity.name}",
-                        persona=entity.summary or "A participant in social discussions.",
+                        user_name=self._generate_username(self._generate_korean_person_name(idx)),
+                        name=self._generate_korean_person_name(idx),
+                        bio=f"{self._generate_korean_person_name(idx)}는 {entity.name} 맥락을 대표하는 보험 시뮬레이션 참여자입니다.",
+                        persona=entity.summary or "라이프핏 건강보험의 가입·유지·해지·전환 조건을 구체적으로 비교하는 참여자입니다.",
+                        source_entity_name=entity.name,
                         source_entity_uuid=entity.uuid,
                         source_entity_type=entity_type,
                     )

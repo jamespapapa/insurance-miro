@@ -91,11 +91,14 @@ class PlatformActionLogger:
     
     def log_simulation_start(self, config: Dict[str, Any]):
         """시뮬레이션 시작 기록"""
+        time_config = config.get("time_config", {})
+        total_hours = time_config.get("total_simulation_hours", 72)
+        minutes_per_round = max(time_config.get("minutes_per_round", 30), 1)
         entry = {
             "timestamp": datetime.now().isoformat(),
             "event_type": "simulation_start",
             "platform": self.platform,
-            "total_rounds": config.get("time_config", {}).get("total_simulation_hours", 72) * 2,
+            "total_rounds": int(total_hours * 60 / minutes_per_round),
             "agents_count": len(config.get("agent_configs", [])),
         }
         
@@ -264,11 +267,14 @@ class ActionLogger:
             f.write(json.dumps(entry, ensure_ascii=False) + '\n')
     
     def log_simulation_start(self, platform: str, config: Dict[str, Any]):
+        time_config = config.get("time_config", {})
+        total_hours = time_config.get("total_simulation_hours", 72)
+        minutes_per_round = max(time_config.get("minutes_per_round", 30), 1)
         entry = {
             "timestamp": datetime.now().isoformat(),
             "platform": platform,
             "event_type": "simulation_start",
-            "total_rounds": config.get("time_config", {}).get("total_simulation_hours", 72) * 2,
+            "total_rounds": int(total_hours * 60 / minutes_per_round),
             "agents_count": len(config.get("agent_configs", [])),
         }
         

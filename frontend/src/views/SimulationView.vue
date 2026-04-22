@@ -23,7 +23,7 @@
       <div class="header-right">
         <div class="workflow-step">
           <span class="step-num">Step 2/5</span>
-          <span class="step-name">환경 구축</span>
+        <span class="step-name">보험 게임 준비</span>
         </div>
         <div class="step-divider"></div>
         <span class="status-indicator" :class="statusClass">
@@ -146,23 +146,21 @@ const handleGoBack = () => {
 }
 
 const handleNextStep = (params = {}) => {
-  addLog('Step 3 진입: 시뮬레이션 시작')
+  const isInsuranceGame = params.mode === 'insurance-game'
+  addLog(isInsuranceGame ? 'Step 3 진입: 보험 시뮬레이션 게임' : 'Step 3 진입: 시뮬레이션 시작')
   
-  // 시뮬레이션 라운드 수 설정 기록
-  if (params.maxRounds) {
+  if (!isInsuranceGame && params.maxRounds) {
     addLog(`사용자 지정 시뮬레이션 라운드 수: ${params.maxRounds} 회`)
-  } else {
-    addLog('자동 설정된 시뮬레이션 라운드 수 사용')
   }
   
   // 라우트 파라미터 구성
   const routeParams = {
-    name: 'SimulationRun',
+    name: isInsuranceGame ? 'InsuranceGame' : 'SimulationRun',
     params: { simulationId: currentSimulationId.value }
   }
   
   // 사용자 지정 라운드 수가 있으면 query 파라미터로 전달
-  if (params.maxRounds) {
+  if (!isInsuranceGame && params.maxRounds) {
     routeParams.query = { maxRounds: params.maxRounds }
   }
   
@@ -431,4 +429,3 @@ onMounted(async () => {
   border-right: 1px solid #EAEAEA;
 }
 </style>
-

@@ -83,10 +83,17 @@ class AgentActivityConfig:
 class TimeSimulationConfig:
     """시간 시뮬레이션 설정(일반적인 온라인 활동 리듬 기반)"""
     # 시뮬레이션 총 지속 시간(시뮬레이션 시간 수)
-    total_simulation_hours: int = 72  # 기본 시뮬레이션 72시간(3일)
+    total_simulation_hours: int = 87360  # 기본 10년(520주 * 7일 * 24시간)
     
-    # 각 라운드가 나타내는 시간(시뮬레이션 분) - 기본 60분(1시간), 시간 흐름 속도 가속
-    minutes_per_round: int = 60
+    # 각 라운드가 나타내는 시간(시뮬레이션 분) - 보험 가입/유지 시뮬레이션은 1주 단위
+    minutes_per_round: int = 10080
+
+    # 보험 가입 장기 추적용 달력 설정
+    start_year: int = 2026
+    weeks_per_year: int = 52
+    target_years: int = 10
+    max_years: int = 10
+    round_unit: str = "week"
     
     # 매시간 활성화되는 Agent 수 범위
     agents_per_hour_min: int = 5
@@ -547,6 +554,9 @@ class SimulationConfigGenerator:
 시간 설정 JSON을 생성해 주세요。
 
 ### 기본 원칙(참고용이며, 구체 사건과 참여 집단에 따라 유연하게 조정 필요):
+- 보험상품 판매/가입 시뮬레이션은 출시 직후 반응뿐 아니라 가입 후 유지, 보험료 갱신, 청구 경험, 해지, 경쟁상품 전환까지 추적해야 함
+- 기본 시간축은 2026년부터 10년이며, 1라운드는 1주, 1년은 52주로 계산함
+- 단기 여론 이벤트가 있더라도 time_config는 장기 보험계약 생애주기를 표현할 수 있도록 520라운드를 기본 목표로 삼음
 - 사용자 집단의 활동 시간은 시뮬레이션 배경과 참여 집단의 실제 생활 패턴에 맞아야 함
 - 새벽 0-5시는 거의 활동이 없음(활성도 계수 0.05)
 - 아침 6-8시는 점차 활발해짐(활성도 계수 0.4)
@@ -562,8 +572,13 @@ class SimulationConfigGenerator:
 
 예시:
 {{
-    "total_simulation_hours": 72,
-    "minutes_per_round": 60,
+    "total_simulation_hours": 87360,
+    "minutes_per_round": 10080,
+    "start_year": 2026,
+    "weeks_per_year": 52,
+    "target_years": 10,
+    "max_years": 10,
+    "round_unit": "week",
     "agents_per_hour_min": 5,
     "agents_per_hour_max": 50,
     "peak_hours": [19, 20, 21, 22],
@@ -574,8 +589,13 @@ class SimulationConfigGenerator:
 }}
 
 필드 설명:
-- total_simulation_hours (int): 시뮬레이션 총 시간, 24-168시간, 돌발 사건은 짧게, 지속 이슈는 길게
-- minutes_per_round (int): 라운드당 시간，30-120분，60분 권장
+- total_simulation_hours (int): 시뮬레이션 총 시간. 보험 가입 장기 추적 기본값은 87360시간(10년)
+- minutes_per_round (int): 라운드당 시간. 보험 가입 장기 추적 기본값은 10080분(1주)
+- start_year (int): 시작 연도, 기본 2026
+- weeks_per_year (int): 1년 주차 수, 반드시 52
+- target_years (int): 목표 시뮬레이션 기간, 1/5/10 중 하나, 기본 10
+- max_years (int): 최장 시뮬레이션 기간, 기본 10
+- round_unit (string): "week"
 - agents_per_hour_min (int): 시간당 최소 활성화 Agent 수(값 범위: 1-{max_agents_allowed})
 - agents_per_hour_max (int): 시간당 최대 활성화 Agent 수(값 범위: 1-{max_agents_allowed})
 - peak_hours (int배열): 피크 시간대, 사건 참여 집단에 따라 조정
@@ -595,15 +615,20 @@ class SimulationConfigGenerator:
     def _get_default_time_config(self, num_entities: int) -> Dict[str, Any]:
         """기본 시간 설정 가져오기(일반적인 온라인 활동 리듬)"""
         return {
-            "total_simulation_hours": 72,
-            "minutes_per_round": 60,  # 라운드당 1시간, 시간 흐름을 빠르게 함
+            "total_simulation_hours": 87360,
+            "minutes_per_round": 10080,  # 라운드당 1주
+            "start_year": 2026,
+            "weeks_per_year": 52,
+            "target_years": 10,
+            "max_years": 10,
+            "round_unit": "week",
             "agents_per_hour_min": max(1, num_entities // 15),
             "agents_per_hour_max": max(5, num_entities // 5),
             "peak_hours": [19, 20, 21, 22],
             "off_peak_hours": [0, 1, 2, 3, 4, 5],
             "morning_hours": [6, 7, 8],
             "work_hours": [9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
-            "reasoning": "기본 온라인 활동 리듬 설정을 사용합니다(매 라운드 1시간)"
+            "reasoning": "보험 가입/유지/해지/전환을 장기 추적하기 위해 2026년부터 10년, 1라운드 1주 단위를 사용합니다"
         }
     
     def _parse_time_config(self, result: Dict[str, Any], num_entities: int) -> TimeSimulationConfig:
@@ -626,9 +651,28 @@ class SimulationConfigGenerator:
             agents_per_hour_min = max(1, agents_per_hour_max // 2)
             logger.warning(f"agents_per_hour_min >= max, {agents_per_hour_min}(으)로 수정됨")
 
+        target_years = int(result.get("target_years", 10) or 10)
+        if target_years not in (1, 5, 10):
+            target_years = 10
+        weeks_per_year = int(result.get("weeks_per_year", 52) or 52)
+        if weeks_per_year != 52:
+            weeks_per_year = 52
+        minutes_per_round = int(result.get("minutes_per_round", 10080) or 10080)
+        if result.get("round_unit", "week") == "week" or minutes_per_round < 10080:
+            minutes_per_round = 10080
+        expected_total_hours = target_years * weeks_per_year * 7 * 24
+        total_simulation_hours = int(result.get("total_simulation_hours", expected_total_hours) or expected_total_hours)
+        if total_simulation_hours < expected_total_hours:
+            total_simulation_hours = expected_total_hours
+
         return TimeSimulationConfig(
-            total_simulation_hours=result.get("total_simulation_hours", 72),
-            minutes_per_round=result.get("minutes_per_round", 60),  # 기본적으로 라운드당 1시간
+            total_simulation_hours=total_simulation_hours,
+            minutes_per_round=minutes_per_round,
+            start_year=int(result.get("start_year", 2026) or 2026),
+            weeks_per_year=weeks_per_year,
+            target_years=target_years,
+            max_years=10,
+            round_unit="week",
             agents_per_hour_min=agents_per_hour_min,
             agents_per_hour_max=agents_per_hour_max,
             peak_hours=result.get("peak_hours", [19, 20, 21, 22]),

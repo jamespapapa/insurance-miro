@@ -181,7 +181,7 @@
             </div>
             <!-- 재생 불가 안내 -->
             <div class="modal-playback-hint">
-              <span class="hint-text">Step3「시뮬레이션 시작」과 Step5「심층 상호작용」은 실행 중에 시작해야 하며, 기록 재생을 지원하지 않습니다</span>
+              <span class="hint-text">Step3「보험 시뮬레이션 게임」과 Step5「심층 상호작용」은 실행 중에 시작해야 하며, 기록 재생을 지원하지 않습니다</span>
             </div>
           </div>
         </div>

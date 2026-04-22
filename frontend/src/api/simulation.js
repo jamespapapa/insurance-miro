@@ -169,6 +169,14 @@ export const getEnvStatus = (data) => {
 }
 
 /**
+ * 보험 게임 화면의 Agent와 직접 대화
+ * @param {Object} data - { simulation_id?, agent, message, chat_history? }
+ */
+export const chatWithSimulationAgent = (data) => {
+  return requestWithRetry(() => service.post('/api/simulation/agent-chat', data), 1, 0)
+}
+
+/**
  * Agent 일괄 인터뷰
  * @param {Object} data - { simulation_id, interviews: [{ agent_id, prompt }] }
  */
@@ -184,4 +192,3 @@ export const interviewAgents = (data) => {
 export const getSimulationHistory = (limit = 20) => {
   return service.get('/api/simulation/history', { params: { limit } })
 }
-

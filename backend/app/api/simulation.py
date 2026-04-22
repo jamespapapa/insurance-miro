@@ -14,6 +14,7 @@ from ..services.oasis_profile_generator import OasisProfileGenerator
 from ..services.simulation_manager import SimulationManager, SimulationStatus
 from ..services.simulation_runner import SimulationRunner, RunnerStatus
 from ..utils.logger import get_logger
+from ..utils.llm_client import LLMClient
 from ..models.project import ProjectManager
 
 logger = get_logger('mirofish.api.simulation')
@@ -40,6 +41,35 @@ def optimize_interview_prompt(prompt: str) -> str:
     if prompt.startswith(INTERVIEW_PROMPT_PREFIX):
         return prompt
     return f"{INTERVIEW_PROMPT_PREFIX}{prompt}"
+
+
+def _safe_text(value, limit: int = 2000) -> str:
+    """API 입력값을 프롬프트에 넣기 전 짧은 문자열로 정리한다."""
+    if value is None:
+        return ""
+    text = str(value).replace("\x00", "").strip()
+    if len(text) > limit:
+        return text[:limit] + "..."
+    return text
+
+
+def _normalize_chat_history(chat_history, limit: int = 12):
+    if not isinstance(chat_history, list):
+        return []
+
+    normalized = []
+    for item in chat_history[-limit:]:
+        if not isinstance(item, dict):
+            continue
+        role = item.get("role")
+        content = item.get("content") or item.get("text")
+        if role not in ("user", "assistant") or not content:
+            continue
+        normalized.append({
+            "role": role,
+            "content": _safe_text(content, 1600)
+        })
+    return normalized
 
 
 # ============== 엔티티 읽기 인터페이스 ==============
@@ -2132,6 +2162,136 @@ def get_simulation_comments(simulation_id: str):
         
     except Exception as e:
         logger.error(f"댓글 가져오기 실패: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
+
+# ============== Agent 대화 API ==============
+
+@simulation_bp.route('/agent-chat', methods=['POST'])
+def chat_with_simulation_agent():
+    """
+    보험 시뮬레이션 화면에서 선택한 Agent와 직접 대화
+
+    OASIS 실행 환경의 interview IPC에 의존하지 않고, 화면의 Agent 페르소나와 현재 상태,
+    세션 대화 기록을 LLM에 직접 전달해 자연스러운 대화 응답을 생성한다.
+    """
+    try:
+        data = request.get_json() or {}
+
+        message = _safe_text(data.get('message'), 3000)
+        agent = data.get('agent') or {}
+        chat_history = _normalize_chat_history(data.get('chat_history', []))
+
+        if not message:
+            return jsonify({
+                "success": False,
+                "error": "message를 제공해 주세요"
+            }), 400
+
+        if not isinstance(agent, dict):
+            return jsonify({
+                "success": False,
+                "error": "agent 정보를 객체로 제공해 주세요"
+            }), 400
+
+        simulation_id = data.get('simulation_id')
+        simulation_requirement = _safe_text(data.get('simulation_requirement'), 1800)
+        if simulation_id and not simulation_requirement:
+            try:
+                manager = SimulationManager()
+                state = manager.get_simulation(simulation_id)
+                if state:
+                    project = ProjectManager.get_project(state.project_id)
+                    if project:
+                        simulation_requirement = _safe_text(project.simulation_requirement, 1800)
+            except Exception as e:
+                logger.warning(f"Agent 채팅용 프로젝트 맥락 로드 실패: {e}")
+
+        name = _safe_text(agent.get('name') or agent.get('display_name') or agent.get('username') or 'Agent', 80)
+        role = _safe_text(agent.get('role') or '일반', 80)
+        segment = _safe_text(agent.get('segment') or '보험 시뮬레이션 참여자', 120)
+        persona = _safe_text(agent.get('persona') or agent.get('bio') or '보험상품을 비교하고 판단하는 사람', 2200)
+        source_name = _safe_text(agent.get('source_name') or agent.get('username'), 160)
+        policy_label = _safe_text(agent.get('policy_label') or agent.get('policyLabel') or '미가입', 80)
+        policy_state = _safe_text(agent.get('policy_state') or agent.get('policyState'), 80)
+        policy_product = _safe_text(agent.get('policy_product') or agent.get('policyProduct'), 160)
+        last_action = _safe_text(agent.get('last_action') or agent.get('lastAction') or '대기', 160)
+        channel = _safe_text(agent.get('channel') or '이동 중', 120)
+        current_time = _safe_text(data.get('current_time') or data.get('currentTime'), 120)
+        product_name = _safe_text(data.get('product_name') or data.get('productName') or '보험 신상품', 160)
+        metrics = agent.get('metrics') if isinstance(agent.get('metrics'), dict) else {}
+
+        metric_lines = []
+        for key, label in (
+            ('awareness', '인지'),
+            ('trust', '신뢰'),
+            ('intent', '가입의향'),
+            ('privacyConcern', '개인정보 우려'),
+            ('priceResistance', '가격저항'),
+            ('tenureWeeks', '가입기간 주차'),
+        ):
+            value = metrics.get(key, agent.get(key))
+            if value is not None:
+                metric_lines.append(f"{label}: {_safe_text(value, 40)}")
+
+        system_prompt = f"""
+너는 보험 가입 시뮬레이션 오픈월드 안에서 실제로 판단하고 움직이는 사람 "{name}"이다.
+너는 "{name}" 본인으로만 말한다. AI, 시스템, 리포터, 시뮬레이션 관리자처럼 말하지 않는다.
+
+[인물]
+- 이름: {name}
+- 역할/관점: {role}
+- 세그먼트: {segment}
+- 원천/직군 힌트: {source_name or '없음'}
+- 세부 페르소나: {persona}
+
+[현재 상태]
+- 현재 상품: {product_name}
+- 현재 시점: {current_time or '시뮬레이션 진행 중'}
+- 보험 상태: {policy_label} / {policy_state or '상태 없음'}
+- 보유/검토 상품: {policy_product or '없음'}
+- 현재 접점: {channel}
+- 마지막 행동: {last_action}
+- 판단 지표: {', '.join(metric_lines) if metric_lines else '없음'}
+
+[시뮬레이션 배경]
+{simulation_requirement or '한국 보험시장 건강보험 신상품 가입 시뮬레이션'}
+
+[대화 규칙]
+- 사용자의 마지막 질문에 첫 문장부터 직접 답한다. 예: "요즘 잘 팔리나요?"라면 판매 체감과 전환 상황을 먼저 말한다.
+- 사용자가 답변이 빗나갔다고 지적하면 짧게 인정하고, 바로 질문에 맞춰 다시 답한다.
+- 이전 답변과 같은 문장, 같은 결론, 같은 마무리를 반복하지 않는다.
+- 내부 수치만 나열하지 말고, {name}의 역할과 페르소나에 맞는 실제 사람의 판단처럼 말한다.
+- 모르는 사실은 단정하지 않고 "제가 보는 범위에서는"처럼 범위를 밝힌다.
+- 한국어 존댓말로 2~5문장만 답한다.
+""".strip()
+
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(chat_history)
+        messages.append({"role": "user", "content": message})
+
+        llm = LLMClient()
+        response = llm.chat(
+            messages=messages,
+            temperature=0.72,
+            max_tokens=900
+        )
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "response": response,
+                "agent_name": name,
+                "model": llm.model
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Agent 대화 실패: {str(e)}")
         return jsonify({
             "success": False,
             "error": str(e),
