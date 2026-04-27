@@ -8,6 +8,7 @@
     "setup:all": "npm run setup && npm run setup:backend",
     "dev": "bash scripts/dev.sh",
     "dev:opencode": "bash scripts/dev-opencode.sh",
+    "dev:opencode-remote": "bash scripts/dev-opencode-remote.sh",
     "backend": "cd backend && uv run python run.py",
     "frontend": "cd frontend && npm run dev",
     "build": "cd frontend && npm run build",

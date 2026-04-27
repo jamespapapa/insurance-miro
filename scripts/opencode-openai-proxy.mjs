@@ -14,6 +14,9 @@ const defaultProviderID = process.env.OPENCODE_MODEL_PROVIDER_ID || 'openai'
 const defaultModelID = process.env.OPENCODE_MODEL_ID || process.env.LLM_MODEL_NAME || 'gpt-5.2'
 const defaultVariant = process.env.OPENCODE_MODEL_VARIANT || undefined
 const authHeader = createBasicAuthHeader()
+const skipNgrokWarning = !['0', 'false', 'no'].includes(
+  String(process.env.OPENCODE_NGROK_SKIP_BROWSER_WARNING || '').toLowerCase()
+)
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -137,6 +140,7 @@ const parseJsonCandidate = (text) => {
 const opencodeRequest = async (pathname, { method = 'GET', body } = {}) => {
   const headers = {}
   if (authHeader) headers.Authorization = authHeader
+  if (skipNgrokWarning) headers['ngrok-skip-browser-warning'] = 'true'
   if (body !== undefined) headers['Content-Type'] = 'application/json'
 
   const response = await fetch(`${opencodeServerUrl}${pathname}`, {

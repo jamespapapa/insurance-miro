@@ -1,29 +1,31 @@
+FROM node:24-bookworm-slim AS frontend-builder
+
+WORKDIR /app/frontend
+
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+COPY frontend/ ./
+RUN npm run build
+
 FROM python:3.11
 
-# Node.js(>=18 충족) 및 필수 도구 설치
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends nodejs npm \
-  && rm -rf /var/lib/apt/lists/*
-
-# uv 공식 이미지에서 uv 복사
 COPY --from=ghcr.io/astral-sh/uv:0.9.26 /uv /uvx /bin/
 
 WORKDIR /app
 
-# 캐시 활용을 위해 먼저 의존성 설명 파일 복사
-COPY package.json package-lock.json ./
-COPY frontend/package.json frontend/package-lock.json ./frontend/
+ENV PYTHONUNBUFFERED=1 \
+    FLASK_HOST=0.0.0.0 \
+    FLASK_DEBUG=False
+
 COPY backend/pyproject.toml backend/uv.lock ./backend/
+RUN cd backend && uv sync --frozen --no-install-project
 
-# 의존성 설치(Node + Python)
-RUN npm ci \
-  && npm ci --prefix frontend \
-  && cd backend && uv sync --frozen
+COPY backend ./backend
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
-# 프로젝트 소스 코드 복사
-COPY . .
+RUN mkdir -p backend/uploads/projects backend/uploads/simulations backend/uploads/reports
 
-EXPOSE 3000 5001
+EXPOSE 5001
 
-# 프론트엔드/백엔드 동시 실행(개발 모드)
-CMD ["npm", "run", "dev"]
+CMD ["sh", "-c", "cd backend && uv run python run.py"]

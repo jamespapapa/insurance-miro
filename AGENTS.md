@@ -6,7 +6,7 @@
 
 - 루트 프로젝트는 Node 스크립트로 프론트엔드와 백엔드를 함께 제어한다. 주요 명령은 `npm run setup:all`, `npm run dev`, `npm run backend`, `npm run frontend`, `npm run build`다.
 - 백엔드는 Flask/Python 3.11+ 앱이며 `backend/app`에 있다. 기본 API 포트는 `5001`이다.
-- 프론트엔드는 Vue 3/Vite 앱이며 `frontend/src`에 있다. 기본 개발 포트는 `3000`이다.
+- 프론트엔드는 Vue 3/Vite 앱이며 `frontend/src`에 있다. 기본 개발 포트는 `3001`이다.
 - 지속 데이터와 실행 산출물은 `backend/uploads/projects`, `backend/uploads/simulations`, `backend/uploads/reports` 아래에 저장된다. 이 경로는 분석 참고용 산출물이지 일반 소스 코드가 아니다.
 - 첫 번째 큰 흐름은 `Home -> MainView(Process) -> /api/graph/ontology/generate -> /api/graph/build`다. 이 흐름이 문서 업로드, 온톨로지 생성, Zep 그래프 구축을 담당한다.
 - 두 번째 큰 흐름은 `/api/simulation/create -> /api/simulation/prepare`다. 이 흐름이 Zep 그래프 엔티티를 읽고, OASIS Agent profile과 `simulation_config.json`을 만든다.
@@ -30,4 +30,3 @@
 - [Current Architecture](docs/current-architecture.md): 현재 코드 구조, API 흐름, 프론트엔드 라우트, 산출물 위치.
 - [Runtime Data Contracts](docs/runtime-data-contracts.md): 프로젝트/시뮬레이션/profile/config/action log/IPC의 현재 데이터 계약.
 - [Insurance Simulator Refactor Plan](docs/insurance-simulator-refactor-plan.md): 보험상품 판매 시뮬레이터로 후반부를 바꾸는 실무 개조 지도.
-

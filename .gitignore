@@ -58,3 +58,4 @@ backend/uploads/
 
 # Docker 데이터
 data/
+.env

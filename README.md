@@ -162,6 +162,21 @@ npm run dev:opencode
 
 > 설명：`gpt-5.2`는 OpenCode의 session API를 통해 중계되므로, `response_format=json_object`는 프록시 계층에서 가능한 한 출력이 제약되고 정리됩니다.
 
+#### 원격 OpenCode Serve 사용
+
+로컬 `opencode serve` 대신 원격에 이미 떠 있는 OpenCode에 연결하려면 아래 모드를 사용합니다:
+
+```bash
+npm run dev:opencode-remote
+```
+
+이 모드는 다음을 동시에 시작합니다:
+- 원격 OpenCode로 전달하는 로컬 OpenAI-compatible 프록시（기본 `http://127.0.0.1:4098/v1`）
+- MiroFish backend
+- MiroFish frontend
+
+기본 원격 서버는 `https://ryann-oceanlike-toxophily.ngrok-free.dev/`이며, Basic Auth 값은 추적되지 않는 `.env`의 `OPENCODE_REMOTE_SERVER_USERNAME`, `OPENCODE_REMOTE_SERVER_PASSWORD`에 둡니다. 모델/포트도 필요하면 `OPENCODE_REMOTE_*` 환경 변수로 덮어쓸 수 있습니다.
+
 #### 2. 의존성 설치
 
 ```bash
@@ -187,7 +202,7 @@ npm run dev
 ```
 
 **서비스 주소：**
-- 프론트엔드：`http://localhost:3000`
+- 프론트엔드：`http://localhost:3001`
 - 백엔드 API：`http://localhost:5001`
 
 **개별 시작：**
@@ -207,7 +222,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-기본적으로 루트 디렉터리의 `.env`를 읽고, 포트 `3000（프론트엔드）/5001（백엔드）`를 매핑합니다
+기본적으로 루트 디렉터리의 `.env`를 읽고, 포트 `3001（프론트엔드）/5001（백엔드）`를 매핑합니다
 
 > `docker-compose.yml`에 주석으로 가속 미러 주소를 제공해두었으며, 필요에 따라 교체할 수 있습니다
 

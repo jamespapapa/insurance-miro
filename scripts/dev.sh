@@ -57,8 +57,10 @@ else
   sleep 2
 fi
 
-if port_open 127.0.0.1 3000 >/dev/null 2>&1; then
-  echo "[dev] reusing existing frontend on 3000"
+FRONTEND_PORT="${FRONTEND_PORT:-3001}"
+
+if port_open 127.0.0.1 "$FRONTEND_PORT" >/dev/null 2>&1; then
+  echo "[dev] reusing existing frontend on ${FRONTEND_PORT}"
 else
   run_named frontend npm run frontend
   sleep 2

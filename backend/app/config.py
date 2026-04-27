@@ -11,10 +11,10 @@ from dotenv import load_dotenv
 project_root_env = os.path.join(os.path.dirname(__file__), '../../.env')
 
 if os.path.exists(project_root_env):
-    load_dotenv(project_root_env, override=True)
+    load_dotenv(project_root_env, override=False)
 else:
     # 루트 디렉터리에 .env가 없으면, 환경 변수를 로드해 보세요(프로덕션 환경용)
-    load_dotenv(override=True)
+    load_dotenv(override=False)
 
 
 class Config:
@@ -72,4 +72,3 @@ class Config:
         if not cls.ZEP_API_KEY:
             errors.append("ZEP_API_KEY 설정되지 않음")
         return errors
-

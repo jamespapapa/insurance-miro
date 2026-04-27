@@ -9,7 +9,7 @@ import warnings
 # 다른 모든 import 이전에 설정 필요
 warnings.filterwarnings("ignore", message=".*resource_tracker.*")
 
-from flask import Flask, request
+from flask import Flask, abort, request, send_from_directory
 from flask_cors import CORS
 
 from .config import Config
@@ -20,6 +20,10 @@ def create_app(config_class=Config):
     """Flask 애플리케이션 팩토리 함수"""
     app = Flask(__name__)
     app.config.from_object(config_class)
+    frontend_dist = os.path.abspath(os.path.join(
+        os.path.dirname(__file__),
+        '../../frontend/dist'
+    ))
     
     # JSON 인코딩 설정: 중국어가 직접 표시되도록 보장( \uXXXX 형식이 아니라)
     # Flask >= 2.3는 app.json.ensure_ascii 사용, 구버전은 JSON_AS_ASCII 설정 사용
@@ -72,9 +76,19 @@ def create_app(config_class=Config):
     @app.route('/health')
     def health():
         return {'status': 'ok', 'service': 'MiroFish Backend'}
+
+    if os.path.isdir(frontend_dist):
+        @app.route('/', defaults={'path': ''})
+        @app.route('/<path:path>')
+        def serve_frontend(path):
+            if path.startswith('api/'):
+                abort(404)
+            requested_file = os.path.join(frontend_dist, path)
+            if path and os.path.isfile(requested_file):
+                return send_from_directory(frontend_dist, path)
+            return send_from_directory(frontend_dist, 'index.html')
     
     if should_log_startup:
         logger.info("MiroFish Backend 시작 완료")
     
     return app
-
